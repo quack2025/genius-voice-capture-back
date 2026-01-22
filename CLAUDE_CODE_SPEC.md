@@ -136,6 +136,36 @@ CREATE POLICY "Users can delete own projects" ON projects
     FOR DELETE USING (auth.uid() = user_id);
 ```
 
+### Tabla: transcription_batches
+
+> **Nota:** Esta tabla debe crearse ANTES de `recordings` debido a la referencia de foreign key.
+
+```sql
+CREATE TABLE transcription_batches (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES auth.users(id),
+    status VARCHAR(30) DEFAULT 'pending_confirmation'
+        CHECK (status IN ('pending_confirmation', 'processing', 'completed', 'partial', 'cancelled')),
+    total_recordings INTEGER DEFAULT 0,
+    completed_count INTEGER DEFAULT 0,
+    failed_count INTEGER DEFAULT 0,
+    estimated_cost_usd DECIMAL(10,4),
+    actual_cost_usd DECIMAL(10,4),
+    session_ids_requested TEXT[],
+    session_ids_not_found TEXT[],
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    confirmed_at TIMESTAMPTZ,
+    completed_at TIMESTAMPTZ
+);
+
+-- RLS
+ALTER TABLE transcription_batches ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view own batches" ON transcription_batches
+    FOR ALL USING (user_id = auth.uid());
+```
+
 ### Tabla: recordings
 
 ```sql
@@ -148,9 +178,11 @@ CREATE TABLE recordings (
     audio_size_bytes INTEGER,
     duration_seconds INTEGER,
     transcription TEXT,
+    previous_transcription TEXT,
     language_detected VARCHAR(5),
     status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'processing', 'completed', 'failed')),
     error_message TEXT,
+    metadata JSONB DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     transcribed_at TIMESTAMPTZ,
     batch_id UUID REFERENCES transcription_batches(id)
@@ -170,34 +202,6 @@ CREATE POLICY "Users can view recordings of own projects" ON recordings
 
 -- Para el widget (sin auth, usa service role en el backend)
 -- El backend valida el public_key y usa service role para insertar
-```
-
-### Tabla: transcription_batches
-
-```sql
-CREATE TABLE transcription_batches (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-    user_id UUID NOT NULL REFERENCES auth.users(id),
-    status VARCHAR(30) DEFAULT 'pending_confirmation' 
-        CHECK (status IN ('pending_confirmation', 'processing', 'completed', 'partial', 'cancelled')),
-    total_recordings INTEGER DEFAULT 0,
-    completed_count INTEGER DEFAULT 0,
-    failed_count INTEGER DEFAULT 0,
-    estimated_cost_usd DECIMAL(10,4),
-    actual_cost_usd DECIMAL(10,4),
-    session_ids_requested TEXT[],
-    session_ids_not_found TEXT[],
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    confirmed_at TIMESTAMPTZ,
-    completed_at TIMESTAMPTZ
-);
-
--- RLS
-ALTER TABLE transcription_batches ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Users can view own batches" ON transcription_batches
-    FOR ALL USING (user_id = auth.uid());
 ```
 
 ### Storage Bucket
@@ -334,7 +338,69 @@ duration_seconds: 45
 
 ---
 
-### 4. GET /api/projects/:projectId/recordings
+### 4. PUT /api/projects/:projectId
+
+**Propósito:** Actualizar configuración de un proyecto.
+
+**Autenticación:** JWT Supabase
+
+**Request:**
+```json
+{
+    "name": "Estudio NPS Q1 2026 - Actualizado",
+    "language": "en",
+    "transcription_mode": "batch"
+}
+```
+
+**Response:**
+```json
+{
+    "success": true,
+    "project": {
+        "id": "uuid",
+        "name": "Estudio NPS Q1 2026 - Actualizado",
+        "public_key": "proj_ABC123XYZ",
+        "language": "en",
+        "transcription_mode": "batch",
+        "updated_at": "2026-01-21T11:00:00Z"
+    }
+}
+```
+
+---
+
+### 5. DELETE /api/projects/:projectId
+
+**Propósito:** Eliminar un proyecto y todas sus grabaciones.
+
+**Autenticación:** JWT Supabase
+
+**Lógica:**
+1. Verificar que el proyecto pertenece al usuario
+2. Eliminar todos los archivos de audio del Storage
+3. Las grabaciones y batches se eliminan automáticamente (CASCADE)
+4. Eliminar el proyecto
+
+**Response (200):**
+```json
+{
+    "success": true,
+    "message": "Project and all associated recordings deleted"
+}
+```
+
+**Response (404):**
+```json
+{
+    "success": false,
+    "error": "Project not found"
+}
+```
+
+---
+
+### 6. GET /api/projects/:projectId/recordings
 
 **Propósito:** Listar grabaciones de un proyecto.
 
@@ -799,18 +865,69 @@ app.get('/health', (req, res) => {
 ```javascript
 const cors = require('cors');
 
+// Función para validar origins con wildcards
+const allowedOrigins = [
+    'https://voice.geniuslabs.ai',
+    'http://localhost:3000',
+    'http://localhost:5173'
+];
+
+const wildcardPatterns = [
+    /^https:\/\/.*\.lovable\.app$/,
+    /^https:\/\/.*\.alchemer\.com$/,
+    /^https:\/\/.*\.alchemer\.eu$/
+];
+
+function isOriginAllowed(origin) {
+    if (!origin) return true; // Allow requests with no origin (like mobile apps)
+    if (allowedOrigins.includes(origin)) return true;
+    return wildcardPatterns.some(pattern => pattern.test(origin));
+}
+
 app.use(cors({
-    origin: [
-        'https://voice.geniuslabs.ai',      // Dashboard
-        'https://*.lovable.app',             // Lovable preview
-        'https://*.alchemer.com',            // Alchemer surveys
-        'https://*.alchemer.eu',             // Alchemer EU
-        'http://localhost:3000',             // Local dev
-        'http://localhost:5173'              // Vite dev
-    ],
+    origin: (origin, callback) => {
+        if (isOriginAllowed(origin)) {
+            callback(null, true);
+        } else {
+            callback(new Error('Not allowed by CORS'));
+        }
+    },
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
     allowedHeaders: ['Content-Type', 'Authorization', 'x-project-key']
 }));
+```
+
+---
+
+## Rate Limiting
+
+```javascript
+const rateLimit = require('express-rate-limit');
+
+// Rate limit para el endpoint de upload (widget público)
+const uploadLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutos
+    max: 100, // máximo 100 requests por IP
+    message: {
+        success: false,
+        error: 'Too many upload requests, please try again later'
+    },
+    standardHeaders: true,
+    legacyHeaders: false
+});
+
+// Rate limit general para API autenticada
+const apiLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 500,
+    message: {
+        success: false,
+        error: 'Too many requests, please try again later'
+    }
+});
+
+app.use('/api/upload', uploadLimiter);
+app.use('/api/', apiLimiter);
 ```
 
 ---
@@ -819,9 +936,11 @@ app.use(cors({
 
 1. **Service Role Key:** Usar SOLO en el backend, nunca exponer al cliente
 2. **Signed URLs:** Para audio_url, generar URLs firmadas con expiración de 1 hora
-3. **Rate Limiting:** Considerar agregar rate limiting al endpoint /api/upload
+3. **Rate Limiting:** Implementado con express-rate-limit (ver sección anterior)
 4. **Logging:** Agregar logging estructurado para debugging
 5. **Whisper Timeout:** El API puede tardar ~1 seg por cada 10 seg de audio. Para audios de 3 min, puede tardar ~20 seg.
+6. **Límite de Whisper API:** Máximo 25MB por archivo de audio
+7. **Validación de duración:** Usar MAX_AUDIO_DURATION_SECONDS para rechazar audios muy largos
 
 ---
 
