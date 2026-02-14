@@ -259,5 +259,151 @@ npm start            # Produccion
 |----------|---------|
 | Dashboard React (Lovable) | Este repo (Express API en Railway) |
 | Supabase directo para lectura | Supabase para escritura + Storage (fallback) |
+
+---
+
+## Integracion con Alchemer - Cambios y Lecciones (2026-02-14)
+
+### Contexto
+
+El widget voice.js funcionaba standalone pero la integracion con encuestas Alchemer fallaba. El snippet original intentaba hacer todo en un solo JavaScript Action, causando race conditions y problemas de posicionamiento.
+
+### Problema 1: voice.js retornaba "Ruta no encontrada"
+
+**Sintoma:** Al acceder a `/voice.js` en produccion, el servidor retornaba un JSON de error en vez del archivo JavaScript.
+
+**Causa raiz:** El middleware CORS (linea 40 original en `src/index.js`) se ejecutaba ANTES de `express.static`. Las peticiones a archivos estaticos como `voice.js` no incluyen header `Origin`, por lo que el middleware CORS las rechazaba en produccion (solo permite sin Origin en development).
+
+**Solucion (PR #7):** Mover `express.static` ANTES del middleware CORS. Tambien se agrego una ruta explicita `GET /voice.js` como respaldo.
+
+```
+// ANTES (roto):
+app.use(cors({...}));        // Bloqueaba requests sin Origin
+app.use(express.static(...)); // Nunca se alcanzaba para archivos estaticos
+
+// DESPUES (correcto):
+app.use(express.static(...)); // Sirve archivos estaticos primero
+app.use(cors({...}));         // CORS solo para API routes
+```
+
+### Problema 2: Deploy en Railway fallaba por healthcheck
+
+**Sintoma:** Despues de mergear PR #7, Railway reportaba healthcheck failure y el deploy no completaba.
+
+**Causa raiz:** El endpoint `/health` estaba definido DESPUES de Helmet, express.static y CORS middleware. Durante el healthcheck de Railway, el request a `/health` era procesado por estos middlewares que podian interferir.
+
+**Solucion:** Mover `/health` como la PRIMERA ruta registrada en la app (linea 22), antes de todo middleware. Esto asegura que Railway siempre reciba respuesta al healthcheck.
+
+```javascript
+// /health es lo primero que se registra
+app.get('/health', (req, res) => {
+    res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+// Despues viene Helmet, express.static, CORS, etc.
+```
+
+**Nota:** Esto significa que `/health` NO tiene headers CORS, lo cual es intencional - solo Railway necesita acceder a este endpoint.
+
+### Problema 3: Alchemer elimina atributos `data-*` del HTML
+
+**Sintoma:** Al agregar `<div data-project="proj_..." data-session="..." data-question="24" data-lang="es">` en el texto de la pregunta, Alchemer guardaba `<div>` sin ningun atributo `data-*`. Solo preservaba `id` y `class`.
+
+**Causa raiz:** El backend de Alchemer sanitiza el HTML de las preguntas y elimina atributos `data-*` personalizados por seguridad. CKEditor en el frontend permite `allowedContent: true`, pero el servidor los strip al guardar.
+
+**Solucion:** No depender del HTML estatico para los data attributes. En su lugar, usar el JavaScript Action para crear el div dinamicamente y setear los atributos via `setAttribute()`.
+
+### Problema 4: Click en el widget no funcionaba (interceptado por `<label>`)
+
+**Sintoma:** El boton "Grabar respuesta" del widget se renderizaba visualmente, pero al hacer click no iniciaba la grabacion. El click activaba el textarea de respuesta en vez del widget.
+
+**Causa raiz:** Alchemer envuelve el texto de la pregunta en un elemento `<label for="sgE-...-element">`. Si el div del widget estaba dentro del question text, quedaba DENTRO del `<label>`. En HTML, cualquier click dentro de un `<label>` se redirige a su control asociado (el textarea), impidiendo que el widget reciba el evento.
+
+**Solucion:** En vez de poner el div en el HTML de la pregunta, el JavaScript Action CREA el div y lo INSERTA entre el `sg-question-title` y `sg-question-options`, fuera del `<label>`.
+
+### Patron final de integracion con Alchemer (3 pasos)
+
+**Paso 1 - CUSTOM HEAD (en Style > HTML/CSS Editor):**
+```html
+<script src="https://voice-capture-api-production.up.railway.app/voice.js" defer></script>
+```
+
+**Paso 2 - Question Text:**
+Solo el texto de la pregunta. NO agregar divs aqui (Alchemer los strip o quedan dentro del label).
+
+**Paso 3 - JavaScript Action (despues de la pregunta):**
+```javascript
+(function() {
+  if (document.getElementById('genius-voice-q24')) return;
+  var questionBox = document.querySelector('[id*="-24-box"]');
+  if (!questionBox) return;
+  var titleDiv = questionBox.querySelector('.sg-question-title');
+  var optionsDiv = questionBox.querySelector('.sg-question-options');
+  var el = document.createElement('div');
+  el.id = 'genius-voice-q24';
+  el.className = 'genius-voice-capture';
+  el.setAttribute('data-project', 'proj_yARjYS0BWb6o');
+  el.setAttribute('data-question', '24');
+  el.setAttribute('data-lang', 'es');
+  var sid = '[survey("session id")]';
+  if (sid && sid.indexOf('[survey') === -1) {
+    el.setAttribute('data-session', sid);
+  }
+  if (optionsDiv) {
+    questionBox.insertBefore(el, optionsDiv);
+  } else if (titleDiv) {
+    titleDiv.parentNode.insertBefore(el, titleDiv.nextSibling);
+  }
+  if (window.GeniusVoice) GeniusVoice.init(el);
+})();
+```
+
+### Notas tecnicas
+
+- **voice.js usa Shadow DOM cerrado** (`attachShadow({mode: 'closed'})`): El widget UI no es accesible via `el.shadowRoot` ni aparece en el DOM inspector normal, pero se renderiza visualmente y responde a clicks.
+- - **Merge codes de Alchemer** (`[survey("session id")]`): Se resuelven en el servidor antes de enviar el HTML al browser. Dentro de JavaScript Actions, Alchemer reemplaza el merge code por el valor real antes de ejecutar el script.
+  - - **Orden de middlewares en Express es critico:** La secuencia debe ser: (1) /health, (2) Helmet, (3) express.static, (4) CORS, (5) body parsers, (6) rate limiting, (7) rutas API.
+    - - **CORS ya permite *.alchemer.com:** La config en `src/config/index.js` tiene wildcard patterns para `*.alchemer.com`, `*.alchemer.eu` y `*.lovable.app`. Las llamadas POST/GET desde `survey.alchemer.com` a los endpoints API funcionan correctamente.
+      -  **express-rate-limit ERR_ERL_UNEXPECTED_X_FORWARDED_FOR:** Railway opera detras de un proxy. El rate limiter puede lanzar este error si no se configura `app.set('trust proxy', 1)`. Pendiente de verificar si afecta funcionalidad.
+     
+      -  ### Problema 5: Transcripcion falla con "Error al transcribir" (2026-02-14)
+      -  
+      **Sintoma:** Al grabar y detener en la encuesta, el widget muestra "Error al transcribir". En la consola de red solo se ve OPTIONS 204 pero no el POST real.
+
+**Causa raiz (encontrada en Railway Deploy Logs):** Dos errores en la base de datos:
+
+1. **`value too long for type character varying(5)`** - La API de Whisper con `response_format: 'verbose_json'` devuelve nombres completos del idioma (ej: `"spanish"`, `"english"`, `"portuguese"`) en el campo `language`. El codigo insertaba este valor directamente en `language_detected VARCHAR(5)`. `"spanish"` tiene 7 caracteres y no cabe en VARCHAR(5).
+
+2. 2. **`audio_path NOT NULL violation`** - La tabla `recordings` tiene `audio_path TEXT NOT NULL` en el schema SQL. Pero `transcribeImmediate.js` en el path de exito insertaba `audio_path: null` (porque no se guarda audio cuando la transcripcion es exitosa).
+  
+   3. **Solucion aplicada** (commit `66708f9`):
+  
+   4. En `src/routes/transcribeImmediate.js`:
+   5. - Se agrego `LANGUAGE_MAP` para convertir nombres de Whisper a codigos ISO 639-1 (ej: `spanish -> es`, `english -> en`)
+      - - Se agrego funcion `normalizeLanguageCode(lang)` que mapea el nombre completo o trunca a 5 chars como fallback
+        - - Se cambio `audio_path: null` a `audio_path: 'transcribed-immediate'` en el path de exito
+          - - Se cambio `audio_path: audioPath` a `audio_path: audioPath || 'failed-no-audio'` en el path de fallback
+           
+            - **Nota sobre el modelo de datos:** El CLAUDE.md original decia que `audio_path` es nullable, pero el schema SQL real (`database/schema.sql`) lo define como `TEXT NOT NULL`. El fix en codigo es una solucion pragmatica; idealmente se deberia tambien ejecutar `ALTER TABLE recordings ALTER COLUMN audio_path DROP NOT NULL;` en Supabase para alinear schema con la intencion del diseno.
+           
+            - ### Problema 6: express-rate-limit ERR_ERL_UNEXPECTED_X_FORWARDED_FOR
+           
+            - **Sintoma:** Error en Railway logs: `ERR_ERL_UNEXPECTED_X_FORWARDED_FOR`
+           
+            - **Causa:** Railway opera detras de un reverse proxy. `express-rate-limit` v7+ requiere configuracion explicita de trust proxy.
+           
+            - **Solucion pendiente:** Agregar `app.set('trust proxy', 1)` en `src/index.js` antes de los rate limiters. Ver: https://express-rate-limit.github.io/ERR_ERL_UNEXPECTED_X_FORWARDED_FOR/
+           
+            - ---
+
+            ## Resumen de todos los cambios realizados (2026-02-14)
+
+            | # | Problema | Archivo | Commit | Estado |
+            |---|----------|---------|--------|--------|
+            | 1 | voice.js "Ruta no encontrada" | src/index.js | PR #7 | Resuelto |
+            | 2 | Railway healthcheck failure | src/index.js | direct edit main | Resuelto |
+            | 3 | Alchemer strips data-* attributes | Alchemer JS Action | N/A (config) | Resuelto |
+            | 4 | Click interceptado por label | Alchemer JS Action | N/A (config) | Resuelto |
+            | 5 | Transcripcion falla (VARCHAR + NOT NULL) | src/routes/transcribeImmediate.js | 66708f9 | Resuelto |
+            | 6 | express-rate-limit proxy error | src/index.js | pendiente | Pendiente |
 | exportApi.exportCsv() | GET /export |
 | Supabase Auth JWT | Validado en middleware/auth.js |
