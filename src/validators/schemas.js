@@ -1,7 +1,5 @@
 const { z } = require('zod');
-
-// Languages supported by Whisper service
-const VALID_LANGUAGES = ['es', 'en', 'pt', 'fr', 'de', 'it', 'ja', 'ko', 'zh'];
+const { VALID_LANGUAGES } = require('../services/audioUtils');
 
 // Esquemas para Projects
 const createProjectSchema = z.object({
@@ -20,10 +18,10 @@ const updateProjectSchema = z.object({
 
 // Esquemas para Upload
 const uploadSchema = z.object({
-    session_id: z.string().min(1).max(100),
+    session_id: z.string().min(1).max(100).regex(/^[a-zA-Z0-9_\-.:]+$/, 'Invalid session ID characters'),
     question_id: z.string().max(50).optional(),
-    duration_seconds: z.coerce.number().int().min(0).max(300).optional(),
-    language: z.string().min(2).max(5).optional(),
+    duration_seconds: z.coerce.number().int().min(1).max(300).optional(),
+    language: z.enum(VALID_LANGUAGES).optional(),
     metadata: z.record(z.unknown()).optional()
 });
 

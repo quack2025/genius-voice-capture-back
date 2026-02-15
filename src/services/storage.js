@@ -1,5 +1,6 @@
 const { supabaseAdmin } = require('../config/supabase');
 const config = require('../config');
+const { getExtensionFromMimeType } = require('./audioUtils');
 
 /**
  * Upload audio file to Supabase Storage
@@ -92,23 +93,6 @@ async function deleteProjectAudios(projectId) {
 }
 
 /**
- * Get file extension from MIME type
- * @param {string} mimeType
- * @returns {string}
- */
-function getExtensionFromMimeType(mimeType) {
-    const extensions = {
-        'audio/webm': 'webm',
-        'audio/mp3': 'mp3',
-        'audio/mpeg': 'mp3',
-        'audio/wav': 'wav',
-        'audio/mp4': 'mp4',
-        'audio/ogg': 'ogg'
-    };
-    return extensions[mimeType] || 'webm';
-}
-
-/**
  * Validate audio file
  * @param {Object} file - Multer file object
  * @returns {{valid: boolean, error?: string}}
@@ -124,6 +108,11 @@ function validateAudioFile(file) {
             valid: false,
             error: `Invalid audio format. Supported: ${config.allowedAudioMimeTypes.join(', ')}`
         };
+    }
+
+    // Check empty file
+    if (file.size === 0) {
+        return { valid: false, error: 'Empty audio file' };
     }
 
     // Check file size

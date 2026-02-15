@@ -1,5 +1,5 @@
 /**
- * Genius Voice Capture Widget v1.4
+ * Genius Voice Capture Widget v1.5
  * Standalone widget for embedding voice recording in surveys (Alchemer, etc.)
  *
  * Usage — Alchemer JavaScript Action (recommended):
@@ -183,6 +183,10 @@
         } catch (e) { /* non-Alchemer environment, ignore */ }
 
         // --- Shadow DOM ---
+        if (typeof container.attachShadow !== 'function') {
+            container.textContent = t.notSupported;
+            return;
+        }
         var shadow = container.attachShadow({ mode: 'closed' });
 
         var styleEl = document.createElement('style');
@@ -229,7 +233,8 @@
         }
 
         function renderUploading() {
-            var msg = seconds > 15 ? t.transcribingLong : t.transcribing;
+            var elapsed = uploadStartedAt ? (Date.now() - uploadStartedAt) / 1000 : 0;
+            var msg = elapsed > 15 ? t.transcribingLong : t.transcribing;
             wrapper.innerHTML = '<div class="gv-uploading"><div class="gv-spinner"></div><span>' + msg + '</span></div>';
         }
 
@@ -270,24 +275,33 @@
             state = 'recording'; // Set immediately to prevent race
             navigator.mediaDevices.getUserMedia({ audio: true })
                 .then(function (stream) {
-                    var mimeType = getMimeType();
-                    var options = mimeType ? { mimeType: mimeType } : {};
+                    try {
+                        var mimeType = getMimeType();
+                        var options = mimeType ? { mimeType: mimeType } : {};
 
-                    mediaRecorder = new MediaRecorder(stream, options);
-                    audioChunks = [];
-                    seconds = 0;
+                        mediaRecorder = new MediaRecorder(stream, options);
+                        audioChunks = [];
+                        seconds = 0;
 
-                    mediaRecorder.ondataavailable = function (e) {
-                        if (e.data.size > 0) audioChunks.push(e.data);
-                    };
+                        mediaRecorder.ondataavailable = function (e) {
+                            if (e.data.size > 0) audioChunks.push(e.data);
+                        };
 
-                    mediaRecorder.onstop = function () {
+                        mediaRecorder.onstop = function () {
+                            stream.getTracks().forEach(function (track) { track.stop(); });
+                            var blob = new Blob(audioChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
+                            uploadAudio(blob);
+                        };
+
+                        mediaRecorder.start(1000);
+                    } catch (e) {
+                        // Stop stream tracks to release microphone if MediaRecorder setup fails
                         stream.getTracks().forEach(function (track) { track.stop(); });
-                        var blob = new Blob(audioChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
-                        uploadAudio(blob);
-                    };
-
-                    mediaRecorder.start(1000);
+                        errorMsg = t.error;
+                        state = 'error';
+                        render();
+                        return;
+                    }
 
                     timerInterval = setInterval(function () {
                         seconds++;
@@ -323,8 +337,11 @@
         }
 
         // --- Upload ---
+        var uploadStartedAt = 0;
+
         function uploadAudio(blob, attempt) {
             attempt = attempt || 1;
+            if (attempt === 1) uploadStartedAt = Date.now();
             var ext = blob.type.indexOf('webm') !== -1 ? 'webm'
                 : blob.type.indexOf('mp4') !== -1 ? 'mp4'
                 : 'webm';
@@ -336,7 +353,7 @@
             formData.append('duration_seconds', String(seconds));
             formData.append('language', lang);
 
-            // Show "processing" message after 15s
+            // Show "processing" message after 15s of waiting
             var longTimer = setTimeout(function () {
                 if (state === 'uploading') render();
             }, 15000);
@@ -360,6 +377,7 @@
             .then(function (data) {
                 clearTimeout(fetchTimeout);
                 clearTimeout(longTimer);
+                if (state !== 'uploading') return; // Guard: ignore if retry already resolved
                 if (data.success && data.status === 'completed') {
                     transcriptionText = data.transcription || '';
                     state = 'success';
@@ -373,6 +391,7 @@
             .catch(function () {
                 clearTimeout(longTimer);
                 clearTimeout(fetchTimeout);
+                if (state !== 'uploading') return; // Guard: ignore if retry already resolved
                 if (attempt < 2) {
                     setTimeout(function () { uploadAudio(blob, attempt + 1); }, 3000);
                     return;

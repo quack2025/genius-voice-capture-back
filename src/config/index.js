@@ -39,7 +39,8 @@ const config = {
     wildcardPatterns: [
         /^https:\/\/.*\.lovable\.app$/,
         /^https:\/\/.*\.alchemer\.com$/,
-        /^https:\/\/.*\.alchemer\.eu$/
+        /^https:\/\/.*\.alchemer\.eu$/,
+        /^https:\/\/.*\.surveygizmo\.com$/
     ]
 };
 
