@@ -173,40 +173,46 @@ created_at, transcribed_at (TIMESTAMPTZ)
 
 ---
 
-## Widget voice.js (v1.2)
+## Widget voice.js (v1.3)
 
 Widget standalone (IIFE, vanilla JS) para embeber en encuestas Alchemer.
 
 **API global:** `window.GeniusVoice.init(container)` y `window.GeniusVoice.scan()`
 
-**Embed en Alchemer (JavaScript Action):**
+**Atributos del container:**
+
+| Atributo | Requerido | Descripcion |
+|----------|-----------|-------------|
+| `data-project` | Si | Project key (ej: `proj_xxx`) |
+| `data-session` | No | Session ID (fallback: URL param sguid/snc, luego ID generado) |
+| `data-question` | No | ID de pregunta (ej: q1, q2) |
+| `data-lang` | No | Idioma: es (default), en, pt |
+| `data-max-duration` | No | Max duracion en segundos (default: 120) |
+| `data-api` | No | URL del API (auto-detectado desde script origin) |
+| `data-target` | No | CSS selector del campo destino para la transcripcion |
+
+**Escritura automatica al campo de respuesta (v1.3):**
+
+Tras transcripcion exitosa, el widget escribe el texto en el campo de respuesta de la encuesta:
+1. **Prioridad 1:** Si `data-target` esta seteado, usa `document.querySelector(selector)`
+2. **Prioridad 2:** Auto-detecta textarea/input en `.sg-question-options` del parent (Alchemer)
+3. **Siempre:** Dispara evento `geniusvoice:transcribed` en el container
+
 ```javascript
-var c=document.createElement('div');
-c.dataset.project='proj_xxx';
-c.dataset.session='[survey("session id")]';
-c.dataset.question='q1';
-c.dataset.lang='es';
-var s=document.scripts;
-s[s.length-1].parentNode.appendChild(c);
-if(window.GeniusVoice){GeniusVoice.init(c)}
-else{var j=document.createElement('script');
-j.src='https://voice-capture-api-production.up.railway.app/voice.js';
-document.head.appendChild(j)}
+// Escuchar evento (opcional, para integraciones custom):
+container.addEventListener('geniusvoice:transcribed', function(e) {
+    console.log(e.detail.text, e.detail.questionId, e.detail.sessionId);
+});
 ```
 
-**Embed generico (HTML):**
-```html
-<div id="genius-voice" data-project="proj_xxx" data-session="SESSION_ID"
-     data-question="q1" data-lang="es"></div>
-<script src="https://voice-capture-api-production.up.railway.app/voice.js"></script>
-```
-
+**Caracteristicas:**
 - Shadow DOM cerrado para aislamiento CSS (no accesible via shadowRoot)
 - MediaRecorder API (WebM/Opus preferido, fallback MP4)
 - i18n interno (es/en/pt) via data-lang
 - Estados: idle -> recording -> uploading -> success -> error
 - Auto-detecta API URL desde script origin
 - Soporta multiples widgets por pagina (una por pregunta)
+- Al re-grabar, limpia el campo de respuesta automaticamente
 
 ---
 

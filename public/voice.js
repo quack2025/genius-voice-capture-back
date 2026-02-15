@@ -1,5 +1,5 @@
 /**
- * Genius Voice Capture Widget v1.2
+ * Genius Voice Capture Widget v1.3
  * Standalone widget for embedding voice recording in surveys (Alchemer, etc.)
  *
  * Usage — Alchemer JavaScript Action (recommended):
@@ -57,7 +57,7 @@
         // If nothing found and we have a script tag with data-project, auto-create
         if (containers.length === 0 && scriptTag && scriptTag.dataset.project) {
             var container = document.createElement('div');
-            var attrs = ['project', 'session', 'question', 'lang', 'maxDuration', 'api'];
+            var attrs = ['project', 'session', 'question', 'lang', 'maxDuration', 'api', 'target'];
             for (var j = 0; j < attrs.length; j++) {
                 if (scriptTag.dataset[attrs[j]]) {
                     container.dataset[attrs[j]] = scriptTag.dataset[attrs[j]];
@@ -88,6 +88,7 @@
         var maxDuration = parseInt(container.dataset.maxDuration, 10) || 120;
         var lang = container.dataset.lang || 'es';
         var apiUrl = container.dataset.api || getScriptOrigin() || 'https://voice-capture-api-production.up.railway.app';
+        var targetSelector = container.dataset.target || null;
 
         // --- i18n ---
         var texts = {
@@ -144,6 +145,34 @@
         var seconds = 0;
         var transcriptionText = '';
         var errorMsg = '';
+
+        // --- Write transcription to host form field ---
+        function writeToFormField(text) {
+            var targetEl = null;
+            try {
+                if (targetSelector) {
+                    targetEl = document.querySelector(targetSelector);
+                }
+                if (!targetEl && container.parentElement) {
+                    targetEl = container.parentElement.querySelector(
+                        '.sg-question-options textarea, .sg-question-options input[type="text"]'
+                    );
+                }
+                if (targetEl) {
+                    targetEl.value = text || '';
+                    targetEl.dispatchEvent(new Event('input', { bubbles: true }));
+                    targetEl.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+            } catch (e) {
+                console.warn('[GeniusVoice] Could not write to form field:', e);
+            }
+            try {
+                container.dispatchEvent(new CustomEvent('geniusvoice:transcribed', {
+                    bubbles: true,
+                    detail: { text: text || '', questionId: questionId, sessionId: sessionId }
+                }));
+            } catch (e) { /* CustomEvent not supported */ }
+        }
 
         // --- Shadow DOM ---
         var shadow = container.attachShadow({ mode: 'closed' });
@@ -324,6 +353,7 @@
                 if (data.success && data.status === 'completed') {
                     transcriptionText = data.transcription || '';
                     state = 'success';
+                    writeToFormField(transcriptionText);
                 } else {
                     errorMsg = data.error || t.error;
                     state = 'error';
@@ -349,6 +379,7 @@
             transcriptionText = '';
             errorMsg = '';
             seconds = 0;
+            writeToFormField('');
             render();
         }
 
