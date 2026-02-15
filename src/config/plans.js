@@ -1,15 +1,21 @@
 /**
  * Plan definitions — single source of truth for tier limits.
- * No database table needed — only 3 fixed plans.
+ * No database table needed — only 4 fixed plans.
+ *
+ * Pricing strategy (v1.7):
+ *   Free      → generous trial, 100 responses
+ *   Freelancer → $39/mo, 1,000 resp ($0.039/resp)
+ *   Pro        → $199/mo, 10,000 resp ($0.020/resp) — half the per-response cost
+ *   Enterprise → $499/mo, 50,000 resp ($0.010/resp) — half again
  */
 
 const PLANS = {
     free: {
         name: 'Free',
         price: 0,
-        max_responses: 50,
-        max_projects: 1,
-        max_duration: 60,
+        max_responses: 100,
+        max_projects: 2,
+        max_duration: 90,
         languages: ['es'],
         export_formats: ['csv'],
         batch: false,
@@ -20,10 +26,10 @@ const PLANS = {
     },
     freelancer: {
         name: 'Freelancer',
-        price: 29,
-        max_responses: 500,
-        max_projects: 5,
-        max_duration: 120,
+        price: 39,
+        max_responses: 1000,
+        max_projects: 10,
+        max_duration: 180,
         languages: ['es', 'en', 'pt', 'fr', 'de', 'it', 'ja', 'ko', 'zh'],
         export_formats: ['csv', 'xlsx'],
         batch: true,
@@ -34,14 +40,28 @@ const PLANS = {
     },
     pro: {
         name: 'Pro',
-        price: 149,
-        max_responses: 5000,
+        price: 199,
+        max_responses: 10000,
         max_projects: null, // unlimited
         max_duration: 300,
         languages: null, // all languages
         export_formats: ['csv', 'xlsx', 'api'],
         batch: true,
         retention_days: 365,
+        show_branding: false,
+        custom_themes: true,
+        custom_domains: true
+    },
+    enterprise: {
+        name: 'Enterprise',
+        price: 499,
+        max_responses: 50000,
+        max_projects: null, // unlimited
+        max_duration: 600,
+        languages: null, // all languages
+        export_formats: ['csv', 'xlsx', 'api'],
+        batch: true,
+        retention_days: 730, // 2 years
         show_branding: false,
         custom_themes: true,
         custom_domains: true

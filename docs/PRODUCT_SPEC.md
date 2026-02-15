@@ -850,21 +850,30 @@ CREATE POLICY batches_user_policy ON transcription_batches
 - ~1,000 audios de 1MB cada uno
 - Después: Supabase Pro ($25/mes) o limpiar audios antiguos
 
-### Modelo de Pricing (Implementado v1.6)
+### Modelo de Pricing (v1.7)
 
-| | Free | Freelancer ($29/mo) | Pro ($149/mo) |
-|---|------|---------------------|---------------|
-| Respuestas/mes | 50 | 500 | 5,000 |
-| Proyectos | 1 | 5 | Ilimitados |
-| Duracion max | 60s | 120s | 300s |
-| Idiomas | Solo espanol | 9 principales | 36 (todos) |
-| Export | CSV | CSV + XLSX | CSV + XLSX + API |
-| Batch | No | Si | Si |
-| Retencion | 30 dias | 90 dias | 1 ano |
-| Widget branding | "Powered by Survey Genius" | Sin branding | White-label (colores custom) |
-| Dominios custom | No | No | Si |
-| Costo Whisper est. | ~$0.23 | ~$2.25 | ~$22.50 |
-| **Margen** | Marketing | **~92%** | **~85%** |
+| | Free | Freelancer ($39/mo) | Pro ($199/mo) | Enterprise ($499/mo) |
+|---|------|---------------------|---------------|----------------------|
+| Respuestas/mes | 100 | 1,000 | 10,000 | 50,000 |
+| Costo/respuesta | $0 | $0.039 | $0.020 | $0.010 |
+| Proyectos | 2 | 10 | Ilimitados | Ilimitados |
+| Duracion max | 90s | 180s | 300s | 600s |
+| Idiomas | Solo espanol | 9 principales | Todos (36) | Todos (36) |
+| Export | CSV | CSV + XLSX | CSV + XLSX + API | CSV + XLSX + API |
+| Batch | No | Si | Si | Si |
+| Retencion | 30 dias | 90 dias | 1 ano | 2 anos |
+| Widget branding | "Powered by Survey Genius" | Sin branding | White-label | White-label |
+| Temas custom | No | No | Si | Si |
+| Dominios custom | No | No | Si | Si |
+
+**Margenes estimados:**
+
+| Tier | Revenue | Costo Whisper | Infra | Total costo | Margen |
+|------|---------|---------------|-------|-------------|--------|
+| Free | $0 | $0.45 | $0.05 | $0.50 | Marketing |
+| Freelancer | $39 | $4.50 | $5.00 | $9.50 | **76%** |
+| Pro | $199 | $45.00 | $45.00 | $90.00 | **55%** |
+| Enterprise | $499 | $225.00 | $50.00 | $275.00 | **45%** |
 
 **Enforcement:**
 - `validateProjectKey` middleware verifica plan + usage en cada request
@@ -950,13 +959,14 @@ CREATE POLICY batches_user_policy ON transcription_batches
 - JOIN manual por session_id
 - Deploy: Railway (API) + Lovable (Dashboard)
 
-### Fase 1.6: Tiers + Usage (v1.6) -- COMPLETADO
-- 3 planes: Free / Freelancer ($29) / Pro ($149)
+### Fase 1.6-1.7: Tiers + Usage (v1.6-v1.7) -- COMPLETADO
+- 4 planes: Free / Freelancer ($39) / Pro ($199) / Enterprise ($499)
 - Usage tracking mensual con enforcement en middleware
-- Dashboard de uso (barra de progreso, tabla comparativa)
-- Widget v1.6: config fetch, branding badge (Free), temas custom (Pro)
-- CORS dinamico para dominios custom (Pro)
+- Dashboard de uso (barra de progreso, tabla comparativa 4 tiers)
+- Widget v1.6: config fetch, branding badge (Free), temas custom (Pro+)
+- CORS dinamico para dominios custom (Pro+)
 - Dominio profesional: `voiceapi.survey-genius.ai`
+- Pricing competitivo validado vs Voxpopme ($40K+/ano), Phonic ($36), Qualtrics ($420)
 
 ### Fase 2: Mejoras UX
 - Multiples preguntas de audio por encuesta
