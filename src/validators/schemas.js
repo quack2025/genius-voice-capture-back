@@ -23,6 +23,7 @@ const uploadSchema = z.object({
     session_id: z.string().min(1).max(100),
     question_id: z.string().max(50).optional(),
     duration_seconds: z.coerce.number().int().min(0).max(300).optional(),
+    language: z.string().min(2).max(5).optional(),
     metadata: z.record(z.unknown()).optional()
 });
 

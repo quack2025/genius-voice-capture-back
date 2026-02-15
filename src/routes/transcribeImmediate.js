@@ -61,7 +61,7 @@ router.post('/',
                                             });
                             }
 
-                                     const { session_id, question_id, duration_seconds, metadata } = bodyValidation.data;
+                                     const { session_id, question_id, duration_seconds, language, metadata } = bodyValidation.data;
                             const project = req.project;
 
                                      // 3. Validate duration
@@ -82,7 +82,7 @@ router.post('/',
                                                      transcriptionResult = await transcribeFromBuffer(
                                                                          req.file.buffer,
                                                                          extension,
-                                                                         project.language || 'es'
+                                                                         language || project.language || 'es'
                                                                      );
                                      } catch (err) {
                                                      whisperFailed = true;

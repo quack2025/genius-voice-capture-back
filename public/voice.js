@@ -1,5 +1,5 @@
 /**
- * Genius Voice Capture Widget v1.3
+ * Genius Voice Capture Widget v1.4
  * Standalone widget for embedding voice recording in surveys (Alchemer, etc.)
  *
  * Usage — Alchemer JavaScript Action (recommended):
@@ -174,6 +174,14 @@
             } catch (e) { /* CustomEvent not supported */ }
         }
 
+        // --- Hide host form field (widget replaces the textarea visually) ---
+        try {
+            if (container.parentElement) {
+                var hostField = container.parentElement.querySelector('.sg-question-options');
+                if (hostField) hostField.style.cssText = 'height:0;overflow:hidden;opacity:0;pointer-events:none;margin:0;padding:0;';
+            }
+        } catch (e) { /* non-Alchemer environment, ignore */ }
+
         // --- Shadow DOM ---
         var shadow = container.attachShadow({ mode: 'closed' });
 
@@ -315,7 +323,8 @@
         }
 
         // --- Upload ---
-        function uploadAudio(blob) {
+        function uploadAudio(blob, attempt) {
+            attempt = attempt || 1;
             var ext = blob.type.indexOf('webm') !== -1 ? 'webm'
                 : blob.type.indexOf('mp4') !== -1 ? 'mp4'
                 : 'webm';
@@ -325,6 +334,7 @@
             formData.append('session_id', sessionId);
             if (questionId) formData.append('question_id', questionId);
             formData.append('duration_seconds', String(seconds));
+            formData.append('language', lang);
 
             // Show "processing" message after 15s
             var longTimer = setTimeout(function () {
@@ -363,6 +373,10 @@
             .catch(function () {
                 clearTimeout(longTimer);
                 clearTimeout(fetchTimeout);
+                if (attempt < 2) {
+                    setTimeout(function () { uploadAudio(blob, attempt + 1); }, 3000);
+                    return;
+                }
                 errorMsg = t.error;
                 state = 'error';
                 render();
