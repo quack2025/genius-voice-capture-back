@@ -861,7 +861,6 @@ CREATE POLICY batches_user_policy ON transcription_batches
 | Idiomas | Solo espanol | 9 principales | Todos (36) | Todos (36) |
 | Export | CSV | CSV + XLSX | CSV + XLSX + API | CSV + XLSX + API |
 | Batch | No | Si | Si | Si |
-| Retencion | 30 dias | 90 dias | 1 ano | 2 anos |
 | Widget branding | "Powered by Survey Genius" | Sin branding | White-label | White-label |
 | Temas custom | No | No | Si | Si |
 | Dominios custom | No | No | Si | Si |

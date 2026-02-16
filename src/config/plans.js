@@ -19,7 +19,6 @@ const PLANS = {
         languages: ['es'],
         export_formats: ['csv'],
         batch: false,
-        retention_days: 30,
         show_branding: true,
         custom_themes: false,
         custom_domains: false
@@ -33,7 +32,6 @@ const PLANS = {
         languages: ['es', 'en', 'pt', 'fr', 'de', 'it', 'ja', 'ko', 'zh'],
         export_formats: ['csv', 'xlsx'],
         batch: true,
-        retention_days: 90,
         show_branding: false,
         custom_themes: false,
         custom_domains: false
@@ -47,7 +45,6 @@ const PLANS = {
         languages: null, // all languages
         export_formats: ['csv', 'xlsx', 'api'],
         batch: true,
-        retention_days: 365,
         show_branding: false,
         custom_themes: true,
         custom_domains: true
@@ -61,7 +58,6 @@ const PLANS = {
         languages: null, // all languages
         export_formats: ['csv', 'xlsx', 'api'],
         batch: true,
-        retention_days: 730, // 2 years
         show_branding: false,
         custom_themes: true,
         custom_domains: true

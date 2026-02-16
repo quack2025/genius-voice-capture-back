@@ -920,10 +920,10 @@ wildcardPatterns: [
 
 ```javascript
 const PLANS = {
-    free:       { max_responses: 100,   max_projects: 2,    max_duration: 90,  batch: false, retention_days: 30,  show_branding: true,  custom_themes: false, custom_domains: false },
-    freelancer: { max_responses: 1000,  max_projects: 10,   max_duration: 180, batch: true,  retention_days: 90,  show_branding: false, custom_themes: false, custom_domains: false },
-    pro:        { max_responses: 10000, max_projects: null,  max_duration: 300, batch: true,  retention_days: 365, show_branding: false, custom_themes: true,  custom_domains: true  },
-    enterprise: { max_responses: 50000, max_projects: null,  max_duration: 600, batch: true,  retention_days: 730, show_branding: false, custom_themes: true,  custom_domains: true  }
+    free:       { max_responses: 100,   max_projects: 2,    max_duration: 90,  batch: false, show_branding: true,  custom_themes: false, custom_domains: false },
+    freelancer: { max_responses: 1000,  max_projects: 10,   max_duration: 180, batch: true,  show_branding: false, custom_themes: false, custom_domains: false },
+    pro:        { max_responses: 10000, max_projects: null,  max_duration: 300, batch: true,  show_branding: false, custom_themes: true,  custom_domains: true  },
+    enterprise: { max_responses: 50000, max_projects: null,  max_duration: 600, batch: true,  show_branding: false, custom_themes: true,  custom_domains: true  }
 };
 ```
 

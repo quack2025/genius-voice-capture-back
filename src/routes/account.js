@@ -78,8 +78,7 @@ router.get('/usage',
                 batch: plan.batch,
                 custom_themes: plan.custom_themes,
                 custom_domains: plan.custom_domains,
-                show_branding: plan.show_branding,
-                retention_days: plan.retention_days
+                show_branding: plan.show_branding
             },
             usage: {
                 responses_this_month: usageRow?.responses_count || 0,
