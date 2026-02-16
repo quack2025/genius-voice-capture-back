@@ -1,27 +1,49 @@
 /**
- * Genius Voice Capture Widget v1.7
+ * Genius Voice Capture Widget v1.8
  * Dual-mode widget: Textarea (default) + Voice dictation
  * Standalone widget for embedding voice recording in surveys (Alchemer, etc.)
  *
- * Usage — Alchemer JavaScript Action (recommended):
- *   Paste this JS in the JavaScript Action field:
+ * === Alchemer Integration (3-step process) ===
  *
- *   var c=document.createElement('div');
- *   c.dataset.project='proj_xxx';
- *   c.dataset.session='SESSION_ID';
- *   c.dataset.question='q1';
- *   c.dataset.lang='es';
- *   var s=document.scripts;
- *   s[s.length-1].parentNode.appendChild(c);
- *   if(window.GeniusVoice){GeniusVoice.init(c)}
- *   else{var j=document.createElement('script');
- *   j.src='https://voiceapi.survey-genius.ai/voice.js';
- *   document.head.appendChild(j)}
+ * STEP 1: Custom HEAD (once per survey)
+ *   In Alchemer: Style > HTML/CSS Editor > Custom HEAD
+ *   <script src="https://voiceapi.survey-genius.ai/voice.js"></script>
  *
- * Usage — HTML embed (generic platforms):
+ * STEP 2: Question Text (per question)
+ *   In the question text (Source/HTML), add a container div:
+ *   <div id="genius-voice-q1"></div>
+ *   NOTE: Alchemer strips data-* attributes from HTML, so config goes in the JS Action.
+ *
+ * STEP 3: JavaScript Action (per question)
+ *   Add an Action > JavaScript on each question:
+ *
+ *   var QUESTION_ID = 'q1';
+ *   var c = document.getElementById('genius-voice-' + QUESTION_ID);
+ *   if (c) {
+ *     c.dataset.project = 'proj_xxx';
+ *     c.dataset.session = '[survey("session id")]';
+ *     c.dataset.question = QUESTION_ID;
+ *     c.dataset.lang = 'es';
+ *     if (window.GeniusVoice) { GeniusVoice.init(c); }
+ *   }
+ *
+ * === Generic HTML embed (non-Alchemer) ===
  *   <div id="genius-voice" data-project="proj_xxx" data-session="SESSION_ID"
  *        data-question="q1" data-lang="es"></div>
  *   <script src="https://voiceapi.survey-genius.ai/voice.js"></script>
+ *
+ *   IMPORTANT: For non-Alchemer platforms, you must EITHER set data-target
+ *   to a CSS selector of the form field to write to, OR listen for the
+ *   custom events (geniusvoice:transcribed, geniusvoice:text-saved) to
+ *   capture the respondent's answer.
+ *
+ * === Custom Events ===
+ *   geniusvoice:ready           - Widget initialized and config loaded
+ *   geniusvoice:recording-start - Recording started
+ *   geniusvoice:recording-stop  - Recording stopped, upload starting
+ *   geniusvoice:transcribed     - Voice transcription completed (detail: { text, questionId, sessionId })
+ *   geniusvoice:text-saved      - Text auto-saved to backend (detail: { text, questionId, sessionId })
+ *   geniusvoice:error           - Error occurred (detail: { error, questionId, sessionId })
  */
 (function () {
     'use strict';
@@ -125,7 +147,7 @@
             },
             pt: {
                 placeholder: 'Digite sua resposta aqui...',
-                dictate: 'Ditar',
+                dictate: 'Gravar',
                 stop: 'Parar',
                 recording: 'Gravando...',
                 transcribing: 'Transcrevendo...',
@@ -160,6 +182,16 @@
         var textareaEl = null;
         var statusEl = null;
 
+        // --- Emit custom events for developer integration ---
+        function emitEvent(eventName, detail) {
+            try {
+                container.dispatchEvent(new CustomEvent('geniusvoice:' + eventName, {
+                    bubbles: true,
+                    detail: Object.assign({ questionId: questionId, sessionId: sessionId }, detail || {})
+                }));
+            } catch (e) { /* CustomEvent not supported */ }
+        }
+
         // --- Write transcription to host form field ---
         function writeToFormField(text) {
             var targetEl = null;
@@ -180,12 +212,6 @@
             } catch (e) {
                 console.warn('[GeniusVoice] Could not write to form field:', e);
             }
-            try {
-                container.dispatchEvent(new CustomEvent('geniusvoice:transcribed', {
-                    bubbles: true,
-                    detail: { text: text || '', questionId: questionId, sessionId: sessionId }
-                }));
-            } catch (e) { /* CustomEvent not supported */ }
         }
 
         // --- Hide host form field (widget replaces the textarea visually) ---
@@ -221,6 +247,7 @@
                 placeholder: state === 'recording' ? t.recording : state === 'uploading' ? t.transcribing : t.placeholder
             });
             ta.rows = 3;
+            ta.setAttribute('aria-label', t.placeholder.replace('...', ''));
             if (state === 'recording' || state === 'uploading') {
                 ta.disabled = true;
                 ta.classList.add('gv-textarea-disabled');
@@ -243,15 +270,17 @@
                 autoSaveText();
             });
 
-            // Status message area
+            // Status message area (aria-live for screen readers)
             var stArea = el('div', { className: 'gv-status' });
+            stArea.setAttribute('role', 'status');
+            stArea.setAttribute('aria-live', 'polite');
             wrapper.appendChild(stArea);
             statusEl = stArea;
 
             // Recording indicator (timer + pulse)
             if (state === 'recording') {
                 var indicator = el('div', { className: 'gv-recording-indicator' });
-                indicator.innerHTML = '<span class="gv-pulse"></span> <span class="gv-timer">' + formatTime(seconds) + '</span>';
+                indicator.innerHTML = '<span class="gv-pulse" aria-hidden="true"></span> <span class="gv-timer">' + formatTime(seconds) + '</span>';
                 stArea.appendChild(indicator);
             }
 
@@ -260,7 +289,7 @@
                 var uploading = el('div', { className: 'gv-uploading' });
                 var elapsed = uploadStartedAt ? (Date.now() - uploadStartedAt) / 1000 : 0;
                 var msg = elapsed > 15 ? t.transcribingLong : t.transcribing;
-                uploading.innerHTML = '<div class="gv-spinner"></div><span>' + msg + '</span>';
+                uploading.innerHTML = '<div class="gv-spinner" aria-hidden="true"></div><span>' + msg + '</span>';
                 stArea.appendChild(uploading);
             }
 
@@ -278,10 +307,10 @@
                 stArea.appendChild(savedMsg);
             }
 
-            // Error message
+            // Error message with retry hint
             if (state === 'error') {
                 var errEl = el('div', { className: 'gv-msg gv-error-msg' });
-                errEl.textContent = errorMsg || t.error;
+                errEl.textContent = (errorMsg || t.error) + ' \u2014 ' + t.retry;
                 stArea.appendChild(errEl);
             }
 
@@ -295,6 +324,7 @@
                 // Mic/dictate button
                 if (hasMic) {
                     var micBtn = el('button', { className: 'gv-btn gv-btn-mic', onclick: startRecording });
+                    micBtn.setAttribute('aria-label', t.dictate);
                     micBtn.innerHTML = micSvg() + ' <span>' + t.dictate + '</span>';
                     actions.appendChild(micBtn);
                 }
@@ -303,6 +333,7 @@
             if (state === 'recording') {
                 // Stop button
                 var stopBtn = el('button', { className: 'gv-btn gv-btn-stop', onclick: stopRecording });
+                stopBtn.setAttribute('aria-label', t.stop);
                 stopBtn.innerHTML = stopSvg() + ' <span>' + t.stop + '</span>';
                 actions.appendChild(stopBtn);
             }
@@ -354,10 +385,16 @@
 
         function autoSaveText() {
             if (autoSaveTimer) { clearTimeout(autoSaveTimer); autoSaveTimer = null; }
-            if (!textareaEl || !textareaEl.value.trim()) return;
+            if (!textareaEl) return;
             if (textSaving) return; // already in flight
+
             var text = textareaEl.value.trim();
-            if (text === lastSavedText) return; // no change since last save
+
+            // If text is empty and nothing was previously saved, nothing to do
+            if (!text && !lastSavedText) return;
+
+            // If text hasn't changed since last save, skip
+            if (text === lastSavedText) return;
 
             textSaving = true;
 
@@ -370,7 +407,7 @@
                 body: JSON.stringify({
                     session_id: sessionId,
                     question_id: questionId,
-                    text: text,
+                    text: text, // empty string = clear on backend
                     language: lang
                 })
             })
@@ -382,24 +419,35 @@
                 textSaving = false;
                 if (data.success) {
                     lastSavedText = text;
-                    textSaved = true;
-                    // Show brief saved indicator
-                    if (statusEl) {
-                        var savedMsg = document.createElement('div');
-                        savedMsg.className = 'gv-msg gv-success-msg';
-                        savedMsg.innerHTML = checkSvgSmall() + ' ' + t.saved;
-                        statusEl.innerHTML = '';
-                        statusEl.appendChild(savedMsg);
-                        // Clear after 2s
-                        setTimeout(function () {
-                            if (textSaved && statusEl) { statusEl.innerHTML = ''; textSaved = false; }
-                        }, 2000);
+                    // Emit text-saved event for developer integration
+                    emitEvent('text-saved', { text: text });
+
+                    if (text) {
+                        textSaved = true;
+                        // Show brief saved indicator
+                        if (statusEl) {
+                            var savedMsg = document.createElement('div');
+                            savedMsg.className = 'gv-msg gv-success-msg';
+                            savedMsg.innerHTML = checkSvgSmall() + ' ' + t.saved;
+                            statusEl.innerHTML = '';
+                            statusEl.appendChild(savedMsg);
+                            // Clear after 2s
+                            setTimeout(function () {
+                                if (textSaved && statusEl) { statusEl.innerHTML = ''; textSaved = false; }
+                            }, 2000);
+                        }
+                    } else {
+                        // Text was cleared — reset saved state silently
+                        textSaved = false;
+                        if (statusEl) { statusEl.innerHTML = ''; }
                     }
                 }
             })
-            .catch(function () {
+            .catch(function (err) {
                 textSaving = false;
-                // Silent fail — text is still in Alchemer's form field via writeToFormField
+                // Emit error event for developer integration
+                emitEvent('error', { error: 'text-save-failed', message: err && err.message });
+                // Silent fail in UI — text is still in Alchemer's form field via writeToFormField
             });
         }
 
@@ -408,6 +456,9 @@
             if (state !== 'idle' && state !== 'error') return;
             state = 'recording';
             voiceJustFinished = false;
+            render(); // Show recording UI immediately
+            emitEvent('recording-start');
+
             navigator.mediaDevices.getUserMedia({ audio: true })
                 .then(function (stream) {
                     try {
@@ -433,6 +484,7 @@
                         stream.getTracks().forEach(function (track) { track.stop(); });
                         errorMsg = t.error;
                         state = 'error';
+                        emitEvent('error', { error: 'recorder-init-failed', message: e && e.message });
                         render();
                         return;
                     }
@@ -454,6 +506,7 @@
                         ? t.notSupported
                         : t.permissionDenied;
                     state = 'error';
+                    emitEvent('error', { error: err && err.name === 'NotFoundError' ? 'not-supported' : 'permission-denied' });
                     render();
                 });
         }
@@ -463,6 +516,7 @@
                 clearInterval(timerInterval);
                 mediaRecorder.stop();
                 state = 'uploading';
+                emitEvent('recording-stop', { duration: seconds });
                 render();
             }
         }
@@ -511,22 +565,32 @@
                 if (state !== 'uploading') return;
                 if (data.success && data.status === 'completed') {
                     var transcription = data.transcription || '';
-                    // Fill textarea with transcription (editable)
                     state = 'idle';
                     voiceJustFinished = true;
                     render();
                     if (textareaEl) {
-                        textareaEl.value = transcription;
+                        // APPEND transcription to existing text (don't overwrite)
+                        var existing = textareaEl.value.trim();
+                        if (existing) {
+                            textareaEl.value = existing + ' ' + transcription;
+                        } else {
+                            textareaEl.value = transcription;
+                        }
                         textareaEl.focus();
                     }
-                    writeToFormField(transcription);
+                    // Set lastSavedText to prevent auto-save from creating a duplicate
+                    // (the voice recording is already saved server-side by /api/transcribe)
+                    lastSavedText = textareaEl ? textareaEl.value.trim() : transcription;
+                    writeToFormField(textareaEl ? textareaEl.value : transcription);
+                    emitEvent('transcribed', { text: textareaEl ? textareaEl.value : transcription });
                 } else {
                     errorMsg = data.error || t.error;
                     state = 'error';
+                    emitEvent('error', { error: 'transcription-failed', message: data.error });
                     render();
                 }
             })
-            .catch(function () {
+            .catch(function (err) {
                 clearTimeout(longTimer);
                 clearTimeout(fetchTimeout);
                 if (state !== 'uploading') return;
@@ -536,6 +600,7 @@
                 }
                 errorMsg = t.error;
                 state = 'error';
+                emitEvent('error', { error: 'upload-failed', message: err && err.message });
                 render();
             });
         }
@@ -568,8 +633,12 @@
                 if (cfg.show_branding) showBranding = true;
                 if (cfg.theme) applyTheme(cfg.theme);
                 render();
+                emitEvent('ready', { config: { max_duration: maxDuration, language: lang } });
             })
-            .catch(function () { /* use defaults on error */ });
+            .catch(function () {
+                // Use defaults on error, still emit ready
+                emitEvent('ready', { config: { max_duration: maxDuration, language: lang } });
+            });
 
         // --- Initialize widget ---
         render();
@@ -628,17 +697,17 @@
         return e;
     }
 
-    // --- SVG Icons ---
+    // --- SVG Icons (with aria-hidden for accessibility) ---
     function micSvg() {
-        return '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>';
+        return '<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>';
     }
 
     function stopSvg() {
-        return '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>';
+        return '<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>';
     }
 
     function checkSvgSmall() {
-        return '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+        return '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
     }
 
     // --- Styles ---
@@ -650,7 +719,7 @@
             // Textarea
             '.gv-textarea { display: block; width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; font-family: inherit; line-height: 1.5; resize: vertical; min-height: 60px; color: #1e293b; background: #fff; transition: border-color 0.2s; }',
             '.gv-textarea:focus { outline: none; border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,0.1); }',
-            '.gv-textarea::placeholder { color: #94a3b8; }',
+            '.gv-textarea::placeholder { color: #71717a; }',
             '.gv-textarea-disabled { background: #f8fafc; color: #64748b; cursor: not-allowed; }',
 
             // Status area
@@ -660,9 +729,10 @@
             '.gv-actions { display: flex; gap: 8px; margin-top: 10px; justify-content: center; }',
 
             // Buttons
-            '.gv-btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border: none; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; transition: all 0.2s; line-height: 1; }',
+            '.gv-btn { display: inline-flex; align-items: center; gap: 6px; padding: 10px 18px; border: none; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; transition: all 0.2s; line-height: 1; min-height: 44px; }',
             '.gv-btn:hover { transform: translateY(-1px); box-shadow: 0 2px 8px rgba(0,0,0,0.12); }',
             '.gv-btn:active { transform: translateY(0); }',
+            '.gv-btn:focus-visible { outline: 2px solid #6366f1; outline-offset: 2px; }',
             '.gv-btn svg { flex-shrink: 0; }',
 
             // Mic/dictate button
@@ -689,8 +759,8 @@
 
             // Messages
             '.gv-msg { font-size: 13px; font-weight: 500; display: flex; align-items: center; gap: 4px; }',
-            '.gv-success-msg { color: #16a34a; }',
-            '.gv-editing-hint { color: #6366f1; font-weight: 400; font-style: italic; }',
+            '.gv-success-msg { color: #15803d; }',
+            '.gv-editing-hint { color: #4f46e5; font-weight: 400; font-style: italic; }',
             '.gv-error-msg { color: #dc2626; }',
 
             // Branding

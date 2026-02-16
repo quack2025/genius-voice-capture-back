@@ -1,7 +1,7 @@
 # Voice Capture - Especificación de Producto
 
 **Producto:** Voice Capture (Genius Labs AI Suite)
-**Versión:** 1.7
+**Versión:** 1.8
 **Última actualización:** 2026-02-16
 
 ---
@@ -135,7 +135,7 @@ Permitir a los encuestados responder preguntas abiertas usando audio o texto, co
 
 | Componente | Tecnología | Razón |
 |------------|------------|-------|
-| Widget (voice.js v1.7) | Vanilla JS + MediaRecorder API | Sin dependencias, funciona en cualquier sitio |
+| Widget (voice.js v1.8) | Vanilla JS + MediaRecorder API | Sin dependencias, funciona en cualquier sitio |
 | Dashboard | React + shadcn/ui + Tailwind (Lovable) | Desarrollo rápido, consistente con Survey Coder PRO |
 | Backend API | Node.js + Express (Claude Code) | Control total, desarrollo con AI |
 | Auth | Supabase Auth | Consistente con otros productos |
@@ -314,11 +314,26 @@ Voice Capture ofrece dos modos para optimizar costos según las necesidades del 
                             │
                             ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  3. Copiar snippet                                              │
+│  3. Copiar snippets (2 partes para Alchemer)                     │
 │                                                                 │
+│  Paso 1: Custom HEAD (una sola vez por encuesta)                │
 │  ┌───────────────────────────────────────────────────────────┐  │
-│  │ <div id="genius-voice" data-project="abc123"></div>       │  │
-│  │ <script src="https://cdn.geniuslabs.ai/voice.js"></script>│  │
+│  │ <script src="https://voiceapi.survey-genius.ai/voice.js"> │  │
+│  │ </script>                                                 │  │
+│  └───────────────────────────────────────────────────────────┘  │
+│                                                                 │
+│  Paso 2: JavaScript Action (por pregunta)                       │
+│  ┌───────────────────────────────────────────────────────────┐  │
+│  │ var QUESTION_ID = 'q1';                                   │  │
+│  │ var c = document.getElementById('genius-voice-' +          │  │
+│  │         QUESTION_ID);                                     │  │
+│  │ if (c) {                                                  │  │
+│  │   c.dataset.project = 'proj_xxx';                         │  │
+│  │   c.dataset.session = '[survey("session id")]';           │  │
+│  │   c.dataset.question = QUESTION_ID;                       │  │
+│  │   c.dataset.lang = 'es';                                  │  │
+│  │   if (window.GeniusVoice) { GeniusVoice.init(c); }       │  │
+│  │ }                                                         │  │
 │  └───────────────────────────────────────────────────────────┘  │
 │                                                                 │
 │  [Copiar al portapapeles]                                       │
@@ -326,11 +341,12 @@ Voice Capture ofrece dos modos para optimizar costos según las necesidades del 
                             │
                             ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  4. Pegar en Alchemer                                           │
-│     ├─ Agregar elemento Text/Media                              │
-│     ├─ Click en "Source" (HTML)                                 │
-│     ├─ Pegar snippet                                            │
-│     └─> ¡Listo!                                                 │
+│  4. Configurar en Alchemer (3 pasos)                            │
+│     ├─ Style > HTML/CSS Editor > Custom HEAD → pegar Step 1     │
+│     ├─ En texto de pregunta (Source HTML) agregar:               │
+│     │   <div id="genius-voice-q1"></div>                        │
+│     ├─ En pregunta: "+" > Action > JavaScript → pegar Step 2    │
+│     └─> ¡Listo! (repetir Steps 2-3 por cada pregunta)           │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -412,37 +428,38 @@ Voice Capture ofrece dos modos para optimizar costos según las necesidades del 
 
 ---
 
-## Widget: voice.js (v1.7)
+## Widget: voice.js (v1.8)
 
 ### Funcionalidad del Script
 
 ```javascript
-// El usuario solo pega esto en Alchemer:
-// <div id="genius-voice" data-project="abc123"></div>
-// <script src="https://cdn.geniuslabs.ai/voice.js"></script>
-
 // El script automáticamente:
 // 1. Detecta el session_id de Alchemer via merge code
 // 2. Fetch config desde /api/widget-config/:projectKey (max_duration, branding, theme)
-// 3. Renderiza textarea + botón dictar + botón enviar
+// 3. Renderiza textarea + botón dictar (sin botón enviar — auto-save on blur)
 // 4. Maneja permisos de micrófono (solo si el usuario usa dictado)
-// 5. Dictado llena el textarea (editable antes de enviar)
-// 6. Envío de texto: POST /api/text-response (sin Whisper, $0 costo)
-// 7. Envío de voz: POST /api/transcribe → Whisper → texto llena textarea
+// 5. Dictado AGREGA texto al textarea (no reemplaza), editable
+// 6. Auto-save de texto: POST /api/text-response on blur + 2s debounce (UPSERT, sin duplicados)
+// 7. Envío de voz: POST /api/transcribe → Whisper → texto se agrega al textarea
 // 8. Muestra badge "Powered by Survey Genius" (si Free tier)
+// 9. Emite eventos: geniusvoice:ready, recording-start, recording-stop, transcribed, text-saved, error
 ```
 
-### Features v1.7
-- **Dual-mode**: Textarea siempre visible + botón "Dictar" + botón "Enviar"
-- **Texto como default**: Los usuarios pueden escribir directamente sin necesidad de usar voz
-- **Dictado llena textarea**: La transcripción de voz llena el textarea, el usuario puede editar antes de enviar
+### Features v1.8
+- **Dual-mode**: Textarea siempre visible + botón "Dictar" (sin botón enviar)
+- **Auto-save on blur**: Texto se guarda automáticamente al perder foco (+ 2s debounce backup)
+- **UPSERT backend**: Solo 1 recording por (session, question, input_method) — sin duplicados
+- **Dictado agrega texto**: La transcripción de voz se AGREGA al texto existente (no reemplaza)
+- **Borrar texto sincroniza**: Si el usuario borra todo, el backend también borra la respuesta
 - **input_method tracking**: Cada respuesta registra si fue `'voice'` o `'text'`
+- **Lifecycle events**: 6 custom events para integración de desarrolladores
+- **Accesibilidad**: aria-label, aria-live, aria-hidden, focus-visible, min-height 44px en botones
 - **Config fetch**: Al iniciar, consulta `/api/widget-config/:projectKey` para obtener max_duration, branding y tema
 - **Branding badge**: Plan Free muestra "Powered by Survey Genius" al pie del widget
 - **Temas custom**: Plan Pro permite colores personalizados (`primary_color`, `background`, `border_radius`)
 - **API URL**: Apunta a `https://voiceapi.survey-genius.ai` por defecto
 
-### UX Flow v1.7
+### UX Flow v1.8
 
 ```
 ┌──────────────────────────────────────┐
@@ -451,14 +468,14 @@ Voice Capture ofrece dos modos para optimizar costos según las necesidades del 
 │  │                              │    │
 │  └──────────────────────────────┘    │
 │                                      │
-│  [ 🎤 Dictar ]       [ Enviar ✓ ]   │
+│          [ 🎤 Dictar ]               │
 │                                      │
 │  Powered by Survey Genius  (free)    │
 └──────────────────────────────────────┘
 ```
 
-**Flujo texto:** Escribir → Enviar → POST /api/text-response → guardado (sin Whisper)
-**Flujo voz:** Click Dictar → grabar → detener → Whisper transcribe → texto llena textarea (editable) → usuario puede editar → la respuesta de voz ya se guardó server-side
+**Flujo texto:** Escribir → blur/Next → auto-save via POST /api/text-response (UPSERT) → guardado
+**Flujo voz:** Click Dictar → grabar → detener → Whisper transcribe → texto se AGREGA al textarea (editable) → voz ya guardada server-side → si usuario edita y blur → auto-save actualiza (no duplica)
 
 ### Integración con Alchemer Session ID
 
@@ -994,6 +1011,21 @@ CREATE POLICY batches_user_policy ON transcription_batches
 - CORS dinamico para dominios custom (Pro+)
 - Dominio profesional: `voiceapi.survey-genius.ai`
 - Pricing competitivo validado vs Voxpopme ($40K+/ano), Phonic ($36), Qualtrics ($420)
+
+### Fase 1.8: UX Polish + Data Integrity (v1.8) -- COMPLETADO
+- **UPSERT text-response**: 1 recording por (session, question, input_method=text) — sin duplicados
+- **Dictado agrega texto**: Transcripcion se agrega al texto existente (no reemplaza)
+- **Borrar texto sincroniza**: Texto vacio borra recording en backend
+- **lastSavedText after voice**: Previene auto-save duplicado post-dictado
+- **Accesibilidad**: aria-label, aria-live, aria-hidden en todos los elementos interactivos
+- **Contraste WCAG AA**: Placeholder #71717a (4.7:1), success #15803d (4.8:1), hint #4f46e5 (5.9:1)
+- **Touch targets**: min-height 44px en botones (Apple HIG compliant)
+- **Focus-visible**: Outline visible para navegacion por teclado
+- **Lifecycle events**: geniusvoice:ready, recording-start, recording-stop, transcribed, text-saved, error
+- **Error con retry hint**: Mensajes de error incluyen texto "Intentar de nuevo"
+- **Portugues BR**: "Ditar" → "Gravar" para mercado brasileño
+- **Docs actualizados**: Header de voice.js y PRODUCT_SPEC con patron Alchemer correcto (3 pasos)
+- **data-target documentado**: Documentacion clara para plataformas no-Alchemer
 
 ### Fase 2: Mejoras UX
 - Multiples preguntas de audio por encuesta

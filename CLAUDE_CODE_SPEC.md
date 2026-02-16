@@ -103,7 +103,7 @@ voice-capture-api/
 │   ├── migration_002_plans_usage.sql # user_profiles + usage tables
 │   └── migration_004_input_method.sql # input_method column on recordings
 ├── public/
-│   └── voice.js                 # Widget v1.7 (dual-mode: text + voice)
+│   └── voice.js                 # Widget v1.8 (dual-mode: text + voice, UPSERT, a11y, lifecycle events)
 ├── tests/
 │   └── ...
 ├── .env.example
@@ -679,9 +679,9 @@ session_id,transcription,duration_seconds,status,created_at,transcribed_at
 
 ---
 
-### 12. POST /api/text-response (v1.7)
+### 12. POST /api/text-response (v1.8)
 
-**Propósito:** Guardar respuesta de texto (sin audio, sin Whisper).
+**Propósito:** Guardar respuesta de texto (sin audio, sin Whisper). UPSERT — no crea duplicados.
 
 **Autenticación:** `x-project-key` header (mismo auth que transcribe)
 
@@ -695,18 +695,22 @@ session_id,transcription,duration_seconds,status,created_at,transcribed_at
 }
 ```
 
-**Lógica:**
+**Lógica (UPSERT):**
 1. Validar project key + plan + usage (via `validateProjectKey`)
-2. Insertar recording con `input_method: 'text'`, `status: 'completed'`, `audio_path: 'text-input'`
-3. Incrementar usage counter
-4. Retornar recording_id
+2. Buscar recording existente con `(project_id, session_id, question_id, input_method='text')`
+3. Si texto vacío y existe: DELETE recording (respondent borró su respuesta)
+4. Si texto vacío y no existe: no-op, retornar `action: 'cleared'`
+5. Si existe: UPDATE transcription (no incrementa usage)
+6. Si no existe: INSERT recording, incrementar usage counter
+7. Retornar recording_id + action (created/updated/cleared)
 
 **Response (200):**
 ```json
 {
     "success": true,
     "recording_id": "uuid",
-    "status": "completed"
+    "status": "completed",
+    "action": "created | updated | cleared"
 }
 ```
 

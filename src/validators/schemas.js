@@ -41,7 +41,7 @@ const batchTranscribeSchema = z.object({
 const textResponseSchema = z.object({
     session_id: z.string().min(1).max(100).regex(/^[a-zA-Z0-9_\-.:]+$/, 'Invalid session ID characters'),
     question_id: z.string().max(50).optional(),
-    text: z.string().min(1).max(5000),
+    text: z.string().max(5000),
     language: z.enum(VALID_LANGUAGES).optional(),
     metadata: z.record(z.unknown()).optional()
 });
