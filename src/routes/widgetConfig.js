@@ -2,6 +2,7 @@ const express = require('express');
 const { asyncHandler } = require('../middleware/errorHandler');
 const { supabaseAdmin } = require('../config/supabase');
 const { getPlan } = require('../config/plans');
+const { getRequestOrigin, isDomainAllowed } = require('../utils/domainValidation');
 
 const router = express.Router();
 
@@ -33,6 +34,19 @@ router.get('/:projectKey',
         const planKey = profile?.plan || 'free';
         const plan = getPlan(planKey);
         const settings = project.settings || {};
+
+        // --- Domain locking: validate Origin against project's allowed_domains ---
+        const allowedDomains = settings.allowed_domains;
+        if (allowedDomains && Array.isArray(allowedDomains) && allowedDomains.length > 0) {
+            const origin = getRequestOrigin(req);
+            if (!isDomainAllowed(origin, allowedDomains)) {
+                console.warn(`[DomainLock] widget-config blocked ${origin || '(no origin)'} for key ${projectKey}`);
+                return res.status(403).json({
+                    success: false,
+                    error: 'Domain not authorized for this project'
+                });
+            }
+        }
 
         // Cache for 5 minutes (reduces load on repeated widget inits)
         res.set('Cache-Control', 'public, max-age=300');

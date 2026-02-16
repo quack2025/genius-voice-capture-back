@@ -1,5 +1,6 @@
 const { supabaseAdmin } = require('../config/supabase');
 const { getPlan, getCurrentMonth } = require('../config/plans');
+const { getRequestOrigin, isDomainAllowed } = require('../utils/domainValidation');
 
 /**
  * Middleware para validar project key (usado por widget).
@@ -59,6 +60,19 @@ async function validateProjectKey(req, res, next) {
                 current: currentUsage,
                 plan: planKey
             });
+        }
+
+        // --- Domain locking: validate Origin against project's allowed_domains ---
+        const allowedDomains = project.settings?.allowed_domains;
+        if (allowedDomains && Array.isArray(allowedDomains) && allowedDomains.length > 0) {
+            const origin = getRequestOrigin(req);
+            if (!isDomainAllowed(origin, allowedDomains)) {
+                console.warn(`[DomainLock] Blocked ${origin || '(no origin)'} for project ${project.id}. Allowed: ${allowedDomains.join(', ')}`);
+                return res.status(403).json({
+                    success: false,
+                    error: 'Domain not authorized for this project'
+                });
+            }
         }
 
         req.project = project;

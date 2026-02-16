@@ -68,25 +68,25 @@ MAX_AUDIO_DURATION_SECONDS=180
 ```
 voice-capture-api/
 ├── src/
-│   ├── index.js                 # Entry point + CORS dinámico
+│   ├── index.js                 # Entry point + CORS dinámico + dynamic widget serving
 │   ├── config/
 │   │   ├── index.js             # Config general (allowedOrigins, wildcards)
 │   │   ├── supabase.js          # Cliente Supabase (anon + admin)
 │   │   ├── openai.js            # Cliente OpenAI
-│   │   └── plans.js             # Definiciones de planes (Free/Freelancer/Pro)
+│   │   └── plans.js             # Definiciones de planes (Free/Freelancer/Pro/Enterprise)
 │   ├── routes/
 │   │   ├── upload.js            # POST /api/upload
 │   │   ├── projects.js          # CRUD proyectos (con enforcement de límites)
 │   │   ├── recordings.js        # CRUD grabaciones
 │   │   ├── transcribe.js        # Batch transcription
 │   │   ├── transcribeImmediate.js # Transcripción inmediata (real-time)
-│   │   ├── textResponse.js      # POST /api/text-response (typed answers)
+│   │   ├── textResponse.js      # POST /api/text-response (typed answers, UPSERT)
 │   │   ├── export.js            # Export CSV/Excel
 │   │   ├── account.js           # GET /api/account/usage + /plans
-│   │   └── widgetConfig.js      # GET /api/widget-config/:key (público)
+│   │   └── widgetConfig.js      # GET /api/widget-config/:key (público, domain-locked)
 │   ├── middleware/
 │   │   ├── auth.js              # Validar JWT Supabase
-│   │   ├── projectKey.js        # Validar project key + plan + usage enforcement
+│   │   ├── projectKey.js        # Validar project key + plan + usage + domain lock
 │   │   └── errorHandler.js      # Manejo global de errores
 │   ├── services/
 │   │   ├── whisper.js           # Integración OpenAI Whisper
@@ -95,15 +95,20 @@ voice-capture-api/
 │   ├── utils/
 │   │   ├── generateId.js        # Generar IDs únicos
 │   │   ├── audioUtils.js        # Detección de formato + duración de audio
-│   │   └── csvParser.js         # Parsear CSV de Alchemer
-│   └── validators/
-│       └── schemas.js           # Esquemas Zod
+│   │   ├── csvParser.js         # Parsear CSV de Alchemer
+│   │   └── domainValidation.js  # Domain locking helpers (isDomainAllowed, getRequestOrigin)
+│   ├── validators/
+│   │   └── schemas.js           # Esquemas Zod
+│   └── widget/
+│       └── voice.js             # Widget SOURCE (readable, v1.8)
+├── scripts/
+│   └── build-widget.js          # Minify voice.js → dist/voice.min.js (terser)
+├── dist/                        # (gitignored) Build output
+│   └── voice.min.js             # Minified + obfuscated widget for production
 ├── database/
 │   ├── schema.sql               # Schema inicial (projects, recordings, batches)
 │   ├── migration_002_plans_usage.sql # user_profiles + usage tables
 │   └── migration_004_input_method.sql # input_method column on recordings
-├── public/
-│   └── voice.js                 # Widget v1.8 (dual-mode: text + voice, UPSERT, a11y, lifecycle events)
 ├── tests/
 │   └── ...
 ├── .env.example
@@ -867,10 +872,11 @@ module.exports = { requireAuth };
 ```javascript
 /**
  * Middleware para validar project key (usado por widget)
- * En v1.6 también:
  * - Consulta user_profiles.plan del owner del proyecto
  * - Consulta usage del mes actual
  * - Si responses_count >= plan.max_responses → 429
+ * - Domain locking: si project.settings.allowed_domains tiene entradas,
+ *   valida Origin/Referer header contra la lista. 403 si no coincide.
  * - Adjunta req.plan, req.planKey, req.usage al request
  */
 async function validateProjectKey(req, res, next) {
@@ -878,7 +884,8 @@ async function validateProjectKey(req, res, next) {
     // 2. Buscar plan del owner (JOIN user_profiles)
     // 3. Buscar usage del mes actual
     // 4. Verificar cuota: si usage >= plan.max_responses → 429
-    // 5. Adjuntar: req.project, req.plan, req.planKey, req.usage
+    // 5. Domain lock: si settings.allowed_domains → validar Origin → 403
+    // 6. Adjuntar: req.project, req.plan, req.planKey, req.usage
 }
 ```
 
@@ -1075,6 +1082,47 @@ const PLANS = {
 - Tema almacenado en `projects.settings.theme` (JSONB)
 - Estructura: `{ preset, primary_color, background, border_radius }`
 - Widget lo consulta via `/api/widget-config/:projectKey`
+
+---
+
+## Widget Build Pipeline (v1.9)
+
+### Source → Minified
+
+```
+src/widget/voice.js  →  (terser)  →  dist/voice.min.js
+     (readable)                        (obfuscated, ~60% smaller)
+```
+
+- **Build:** `npm run build` (runs `scripts/build-widget.js`)
+- **Railway:** Automatically runs `npm run build` before `npm start`
+- **Dev mode:** Serves `src/widget/voice.js` unminified (hot-reload via nodemon)
+- **Production:** Serves `dist/voice.min.js` cached in memory at startup
+
+### Dynamic Serving (replaces express.static)
+
+`GET /voice.js` is handled by a route in `index.js` (before CORS middleware):
+- Production: serves minified version with `Cache-Control: public, max-age=300`
+- Development: reads source fresh on each request (`Cache-Control: no-cache`)
+
+### Domain Locking
+
+Per-project API-level domain restriction via `projects.settings.allowed_domains`:
+
+```json
+// Example: project settings in Supabase
+{
+    "allowed_domains": ["*.alchemer.com", "*.alchemer.eu", "mycompany.com"]
+}
+```
+
+- If `allowed_domains` is empty or not set → allow all (backward compatible)
+- If set → validate `Origin` or `Referer` header against the list
+- Wildcard `*.example.com` matches `sub.example.com` and `example.com`
+- `localhost` / `127.0.0.1` always allowed for development
+- Missing origin with active domain lock → 403 (fail closed)
+- Enforced in: `validateProjectKey` middleware + `widgetConfig` endpoint
+- Logs: `[DomainLock] Blocked {origin} for project {id}. Allowed: {list}`
 
 ---
 

@@ -19,6 +19,7 @@ const textResponseRoutes = require('./routes/textResponse');
 const widgetConfigRoutes = require('./routes/widgetConfig');
 const accountRoutes = require('./routes/account');
 const path = require('path');
+const fs = require('fs');
 const { supabaseAdmin } = require('./config/supabase');
 
 const app = express();
@@ -43,10 +44,44 @@ app.use(helmet({
     contentSecurityPolicy: false
 }));
 
-// Serve static files BEFORE CORS so voice.js is always accessible
+// --- Dynamic widget serving (replaces express.static for voice.js) ---
+// In production: serve minified/obfuscated version (built by `npm run build`)
+// In dev: serve readable source for debugging
+const widgetSourcePath = path.join(__dirname, 'widget', 'voice.js');
+const widgetMinPath = path.join(__dirname, '..', 'dist', 'voice.min.js');
+
+// Pre-load minified widget at startup (production)
+let widgetMinCache = null;
+if (config.nodeEnv === 'production') {
+    try {
+        widgetMinCache = fs.readFileSync(widgetMinPath, 'utf8');
+        console.log(`Widget loaded: ${widgetMinPath} (${widgetMinCache.length} bytes)`);
+    } catch (e) {
+        console.warn('Minified widget not found — run `npm run build` first. Falling back to source.');
+    }
+}
+
+// Serve voice.js BEFORE CORS so it's accessible from any survey page
 // (CORS middleware rejects requests without Origin header in production,
-//  which would block the widget script from being loaded)
-app.use(express.static(path.join(__dirname, '..', 'public')));
+//  which would block the widget <script> tag from loading)
+app.get('/voice.js', (req, res) => {
+    let content;
+    if (config.nodeEnv === 'production' && widgetMinCache) {
+        content = widgetMinCache;
+        res.set('Cache-Control', 'public, max-age=300'); // 5 min CDN/browser cache
+    } else {
+        // Dev mode: read fresh on every request for hot-reload with nodemon
+        try {
+            content = fs.readFileSync(widgetSourcePath, 'utf8');
+        } catch (e) {
+            return res.status(404).send('// Widget source not found');
+        }
+        res.set('Cache-Control', 'no-cache');
+    }
+    res.set('Content-Type', 'application/javascript; charset=utf-8');
+    res.set('X-Content-Type-Options', 'nosniff');
+    res.send(content);
+});
 
 // CORS configuration — static allowlist + dynamic custom domains (Pro)
 function isOriginAllowed(origin) {
@@ -133,11 +168,6 @@ const apiLimiter = rateLimit({
     },
     standardHeaders: true,
     legacyHeaders: false
-});
-
-// Explicit route for voice.js widget (safety net in case express.static fails)
-app.get('/voice.js', (req, res) => {
-    res.sendFile(path.join(__dirname, '..', 'public', 'voice.js'));
 });
 
 // API routes

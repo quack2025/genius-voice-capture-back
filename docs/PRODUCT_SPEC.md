@@ -1,7 +1,7 @@
 # Voice Capture - Especificación de Producto
 
 **Producto:** Voice Capture (Genius Labs AI Suite)
-**Versión:** 1.8
+**Versión:** 1.9
 **Última actualización:** 2026-02-16
 
 ---
@@ -1026,6 +1026,12 @@ CREATE POLICY batches_user_policy ON transcription_batches
 - **Portugues BR**: "Ditar" → "Gravar" para mercado brasileño
 - **Docs actualizados**: Header de voice.js y PRODUCT_SPEC con patron Alchemer correcto (3 pasos)
 - **data-target documentado**: Documentacion clara para plataformas no-Alchemer
+
+### Fase 1.9: IP Protection + Security Hardening (v1.9) -- COMPLETADO
+- **Widget minification**: voice.js source moved to src/widget/, built with terser to dist/voice.min.js (~60% smaller). Comments, variable names, and integration docs stripped from production.
+- **Dynamic widget serving**: /voice.js served via route handler (not express.static). Production serves minified from memory cache; dev serves readable source with no-cache.
+- **Domain locking**: Per-project `settings.allowed_domains` restricts which domains can use a project key. Validated in both `validateProjectKey` middleware and `widget-config` endpoint. Supports wildcards (*.alchemer.com). localhost always allowed for dev. Empty = allow all (backward compatible).
+- **Build pipeline**: `npm run build` runs terser; Railway auto-runs before start.
 
 ### Fase 2: Mejoras UX
 - Multiples preguntas de audio por encuesta
