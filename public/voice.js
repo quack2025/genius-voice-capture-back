@@ -97,13 +97,11 @@
                 placeholder: 'Escribe tu respuesta aqu\u00ed...',
                 dictate: 'Dictar',
                 stop: 'Detener',
-                submit: 'Enviar',
                 recording: 'Grabando...',
                 transcribing: 'Transcribiendo...',
                 transcribingLong: 'Procesando, un momento...',
-                success: 'Respuesta guardada',
-                submitted: 'Respuesta enviada',
-                editing: 'Puedes editar antes de enviar',
+                saved: 'Respuesta guardada',
+                editing: 'Puedes editar antes de continuar',
                 error: 'Error al transcribir',
                 retry: 'Intentar de nuevo',
                 permissionDenied: 'Se necesita acceso al micr\u00f3fono',
@@ -114,13 +112,11 @@
                 placeholder: 'Type your answer here...',
                 dictate: 'Dictate',
                 stop: 'Stop',
-                submit: 'Submit',
                 recording: 'Recording...',
                 transcribing: 'Transcribing...',
                 transcribingLong: 'Processing, one moment...',
-                success: 'Answer saved',
-                submitted: 'Answer submitted',
-                editing: 'You can edit before submitting',
+                saved: 'Answer saved',
+                editing: 'You can edit before continuing',
                 error: 'Transcription error',
                 retry: 'Try again',
                 permissionDenied: 'Microphone access required',
@@ -131,13 +127,11 @@
                 placeholder: 'Digite sua resposta aqui...',
                 dictate: 'Ditar',
                 stop: 'Parar',
-                submit: 'Enviar',
                 recording: 'Gravando...',
                 transcribing: 'Transcrevendo...',
                 transcribingLong: 'Processando, um momento...',
-                success: 'Resposta salva',
-                submitted: 'Resposta enviada',
-                editing: 'Voc\u00ea pode editar antes de enviar',
+                saved: 'Resposta salva',
+                editing: 'Voc\u00ea pode editar antes de continuar',
                 error: 'Erro na transcri\u00e7\u00e3o',
                 retry: 'Tentar novamente',
                 permissionDenied: '\u00c9 necess\u00e1rio acesso ao microfone',
@@ -148,7 +142,7 @@
         var t = texts[lang] || texts.es;
 
         // --- State ---
-        var state = 'idle'; // idle | recording | uploading | submitted | error
+        var state = 'idle'; // idle | recording | uploading | error
         var mediaRecorder = null;
         var audioChunks = [];
         var timerInterval = null;
@@ -157,6 +151,10 @@
         var showBranding = false;
         var configLoaded = false;
         var voiceJustFinished = false; // true after voice transcription fills textarea
+        var textSaved = false; // true after text auto-saved to backend
+        var textSaving = false; // true while auto-save in flight
+        var autoSaveTimer = null; // debounce timer for auto-save
+        var lastSavedText = ''; // track what was last saved to avoid duplicates
 
         // --- DOM refs (set during render) ---
         var textareaEl = null;
@@ -227,20 +225,22 @@
                 ta.disabled = true;
                 ta.classList.add('gv-textarea-disabled');
             }
-            if (state === 'submitted') {
-                ta.disabled = true;
-                ta.classList.add('gv-textarea-disabled');
-            }
             // Preserve textarea value
-            if (textareaEl && textareaEl.value && state !== 'submitted') {
+            if (textareaEl && textareaEl.value) {
                 ta.value = textareaEl.value;
             }
             wrapper.appendChild(ta);
             textareaEl = ta;
 
-            // Sync to form field on input
+            // Sync to form field on input + schedule auto-save
             ta.addEventListener('input', function () {
                 writeToFormField(ta.value);
+                scheduleAutoSave();
+            });
+
+            // Auto-save on blur (user clicks Next, clicks elsewhere, etc.)
+            ta.addEventListener('blur', function () {
+                autoSaveText();
             });
 
             // Status message area
@@ -264,18 +264,18 @@
                 stArea.appendChild(uploading);
             }
 
-            // Success/submitted message
-            if (state === 'submitted') {
-                var successMsg = el('div', { className: 'gv-msg gv-success-msg' });
-                successMsg.innerHTML = checkSvgSmall() + ' ' + t.submitted;
-                stArea.appendChild(successMsg);
-            }
-
             // Editing hint after voice transcription
             if (voiceJustFinished && state === 'idle') {
                 var hint = el('div', { className: 'gv-msg gv-editing-hint' });
                 hint.textContent = t.editing;
                 stArea.appendChild(hint);
+            }
+
+            // Saved confirmation (brief)
+            if (textSaved && state === 'idle') {
+                var savedMsg = el('div', { className: 'gv-msg gv-success-msg' });
+                savedMsg.innerHTML = checkSvgSmall() + ' ' + t.saved;
+                stArea.appendChild(savedMsg);
             }
 
             // Error message
@@ -298,15 +298,6 @@
                     micBtn.innerHTML = micSvg() + ' <span>' + t.dictate + '</span>';
                     actions.appendChild(micBtn);
                 }
-
-                // Submit button
-                var submitBtn = el('button', { className: 'gv-btn gv-btn-submit', onclick: submitText });
-                submitBtn.innerHTML = '<span>' + t.submit + '</span> ' + checkSvgSmall();
-                if (!textareaEl.value || !textareaEl.value.trim()) {
-                    submitBtn.disabled = true;
-                    submitBtn.classList.add('gv-btn-disabled');
-                }
-                actions.appendChild(submitBtn);
             }
 
             if (state === 'recording') {
@@ -314,13 +305,6 @@
                 var stopBtn = el('button', { className: 'gv-btn gv-btn-stop', onclick: stopRecording });
                 stopBtn.innerHTML = stopSvg() + ' <span>' + t.stop + '</span>';
                 actions.appendChild(stopBtn);
-            }
-
-            if (state === 'submitted') {
-                // Allow new response
-                var resetBtn = el('button', { className: 'gv-btn gv-btn-secondary', onclick: resetWidget });
-                resetBtn.textContent = t.retry;
-                actions.appendChild(resetBtn);
             }
 
             renderBranding();
@@ -341,8 +325,6 @@
             if (theme.primary_color) {
                 css.push('.gv-btn-mic{background:' + theme.primary_color + '}');
                 css.push('.gv-btn-mic:hover{background:' + theme.primary_color + ';filter:brightness(0.9)}');
-                css.push('.gv-btn-submit{background:' + theme.primary_color + '}');
-                css.push('.gv-btn-submit:hover{background:' + theme.primary_color + ';filter:brightness(0.9)}');
                 css.push('.gv-spinner{border-top-color:' + theme.primary_color + '}');
             }
             if (theme.background) {
@@ -361,14 +343,23 @@
             }
         }
 
-        // --- Submit text (typed answer) ---
-        function submitText() {
-            if (!textareaEl || !textareaEl.value.trim()) return;
-            if (state === 'uploading' || state === 'submitted') return;
+        // --- Auto-save text (on blur + debounce) ---
+        function scheduleAutoSave() {
+            if (autoSaveTimer) clearTimeout(autoSaveTimer);
+            textSaved = false; // reset saved indicator on new input
+            autoSaveTimer = setTimeout(function () {
+                autoSaveText();
+            }, 2000);
+        }
 
+        function autoSaveText() {
+            if (autoSaveTimer) { clearTimeout(autoSaveTimer); autoSaveTimer = null; }
+            if (!textareaEl || !textareaEl.value.trim()) return;
+            if (textSaving) return; // already in flight
             var text = textareaEl.value.trim();
-            state = 'uploading';
-            render();
+            if (text === lastSavedText) return; // no change since last save
+
+            textSaving = true;
 
             fetch(apiUrl + '/api/text-response', {
                 method: 'POST',
@@ -388,25 +379,27 @@
                 return response.json();
             })
             .then(function (data) {
+                textSaving = false;
                 if (data.success) {
-                    writeToFormField(text);
-                    state = 'submitted';
-                    voiceJustFinished = false;
-                    // Keep text in textarea (disabled)
-                    render();
-                    if (textareaEl) textareaEl.value = text;
-                } else {
-                    errorMsg = data.error || t.error;
-                    state = 'error';
-                    render();
-                    if (textareaEl) textareaEl.value = text;
+                    lastSavedText = text;
+                    textSaved = true;
+                    // Show brief saved indicator
+                    if (statusEl) {
+                        var savedMsg = document.createElement('div');
+                        savedMsg.className = 'gv-msg gv-success-msg';
+                        savedMsg.innerHTML = checkSvgSmall() + ' ' + t.saved;
+                        statusEl.innerHTML = '';
+                        statusEl.appendChild(savedMsg);
+                        // Clear after 2s
+                        setTimeout(function () {
+                            if (textSaved && statusEl) { statusEl.innerHTML = ''; textSaved = false; }
+                        }, 2000);
+                    }
                 }
             })
             .catch(function () {
-                errorMsg = t.error;
-                state = 'error';
-                render();
-                if (textareaEl) textareaEl.value = text;
+                textSaving = false;
+                // Silent fail — text is still in Alchemer's form field via writeToFormField
             });
         }
 
@@ -549,6 +542,7 @@
 
         function resetWidget() {
             clearInterval(timerInterval);
+            if (autoSaveTimer) { clearTimeout(autoSaveTimer); autoSaveTimer = null; }
             if (mediaRecorder && mediaRecorder.state === 'recording') {
                 try { mediaRecorder.stop(); } catch (e) { /* ignore */ }
             }
@@ -557,6 +551,9 @@
             errorMsg = '';
             seconds = 0;
             voiceJustFinished = false;
+            textSaved = false;
+            textSaving = false;
+            lastSavedText = '';
             render();
             if (textareaEl) textareaEl.value = '';
             writeToFormField('');
@@ -660,7 +657,7 @@
             '.gv-status { min-height: 24px; margin-top: 8px; }',
 
             // Actions row
-            '.gv-actions { display: flex; gap: 8px; margin-top: 10px; justify-content: flex-end; }',
+            '.gv-actions { display: flex; gap: 8px; margin-top: 10px; justify-content: center; }',
 
             // Buttons
             '.gv-btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border: none; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; transition: all 0.2s; line-height: 1; }',
@@ -671,11 +668,6 @@
             // Mic/dictate button
             '.gv-btn-mic { background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; }',
             '.gv-btn-mic:hover { background: #e2e8f0; color: #334155; }',
-
-            // Submit button
-            '.gv-btn-submit { background: #6366f1; color: #fff; }',
-            '.gv-btn-submit:hover { background: #4f46e5; }',
-            '.gv-btn-disabled { opacity: 0.4; cursor: not-allowed; pointer-events: none; }',
 
             // Stop button
             '.gv-btn-stop { background: #ef4444; color: #fff; }',
