@@ -15,6 +15,7 @@ const recordingsRoutes = require('./routes/recordings');
 const transcribeRoutes = require('./routes/transcribe');
 const exportRoutes = require('./routes/export');
 const transcribeImmediateRoutes = require('./routes/transcribeImmediate');
+const textResponseRoutes = require('./routes/textResponse');
 const widgetConfigRoutes = require('./routes/widgetConfig');
 const accountRoutes = require('./routes/account');
 const path = require('path');
@@ -141,6 +142,7 @@ app.get('/voice.js', (req, res) => {
 
 // API routes
 app.use('/api/transcribe', uploadLimiter, transcribeImmediateRoutes);
+app.use('/api/text-response', uploadLimiter, textResponseRoutes);
 app.use('/api/upload', uploadLimiter, uploadRoutes);
 app.use('/api/projects', apiLimiter, projectsRoutes);
 app.use('/api/projects/:projectId/recordings', apiLimiter, recordingsRoutes);

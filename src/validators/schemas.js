@@ -37,6 +37,15 @@ const batchTranscribeSchema = z.object({
     session_ids: z.array(z.string()).min(1).max(10000)
 });
 
+// Esquemas para Text Response (typed answers, no audio)
+const textResponseSchema = z.object({
+    session_id: z.string().min(1).max(100).regex(/^[a-zA-Z0-9_\-.:]+$/, 'Invalid session ID characters'),
+    question_id: z.string().max(50).optional(),
+    text: z.string().min(1).max(5000),
+    language: z.enum(VALID_LANGUAGES).optional(),
+    metadata: z.record(z.unknown()).optional()
+});
+
 // Esquemas para Export
 const exportQuerySchema = z.object({
     format: z.enum(['csv', 'xlsx']).default('csv'),
@@ -62,6 +71,7 @@ module.exports = {
     createProjectSchema,
     updateProjectSchema,
     uploadSchema,
+    textResponseSchema,
     recordingsQuerySchema,
     batchTranscribeSchema,
     exportQuerySchema,

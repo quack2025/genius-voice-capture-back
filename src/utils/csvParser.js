@@ -10,6 +10,7 @@ function recordingsToCSV(recordings) {
         'session_id',
         'question_id',
         'transcription',
+        'input_method',
         'duration_seconds',
         'status',
         'language_detected',

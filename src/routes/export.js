@@ -91,7 +91,7 @@ router.get('/',
         while (offset < count) {
             let query = supabaseAdmin
                 .from('recordings')
-                .select('session_id, question_id, transcription, duration_seconds, status, language_detected, created_at, transcribed_at')
+                .select('session_id, question_id, transcription, input_method, duration_seconds, status, language_detected, created_at, transcribed_at')
                 .eq('project_id', projectId)
                 .order('created_at', { ascending: true })
                 .range(offset, offset + EXPORT_PAGE_SIZE - 1);

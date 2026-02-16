@@ -1,5 +1,6 @@
 /**
- * Genius Voice Capture Widget v1.6
+ * Genius Voice Capture Widget v1.7
+ * Dual-mode widget: Textarea (default) + Voice dictation
  * Standalone widget for embedding voice recording in surveys (Alchemer, etc.)
  *
  * Usage — Alchemer JavaScript Action (recommended):
@@ -93,43 +94,52 @@
         // --- i18n ---
         var texts = {
             es: {
-                record: 'Grabar respuesta',
+                placeholder: 'Escribe tu respuesta aqu\u00ed...',
+                dictate: 'Dictar',
                 stop: 'Detener',
+                submit: 'Enviar',
                 recording: 'Grabando...',
                 transcribing: 'Transcribiendo...',
                 transcribingLong: 'Procesando, un momento...',
                 success: 'Respuesta guardada',
+                submitted: 'Respuesta enviada',
+                editing: 'Puedes editar antes de enviar',
                 error: 'Error al transcribir',
                 retry: 'Intentar de nuevo',
-                rerecord: 'Grabar de nuevo',
                 permissionDenied: 'Se necesita acceso al micr\u00f3fono',
                 notSupported: 'Tu navegador no soporta grabaci\u00f3n de audio',
                 maxReached: 'Duraci\u00f3n m\u00e1xima alcanzada'
             },
             en: {
-                record: 'Record answer',
+                placeholder: 'Type your answer here...',
+                dictate: 'Dictate',
                 stop: 'Stop',
+                submit: 'Submit',
                 recording: 'Recording...',
                 transcribing: 'Transcribing...',
                 transcribingLong: 'Processing, one moment...',
                 success: 'Answer saved',
+                submitted: 'Answer submitted',
+                editing: 'You can edit before submitting',
                 error: 'Transcription error',
                 retry: 'Try again',
-                rerecord: 'Record again',
                 permissionDenied: 'Microphone access required',
                 notSupported: 'Your browser does not support audio recording',
                 maxReached: 'Maximum duration reached'
             },
             pt: {
-                record: 'Gravar resposta',
+                placeholder: 'Digite sua resposta aqui...',
+                dictate: 'Ditar',
                 stop: 'Parar',
+                submit: 'Enviar',
                 recording: 'Gravando...',
                 transcribing: 'Transcrevendo...',
                 transcribingLong: 'Processando, um momento...',
                 success: 'Resposta salva',
+                submitted: 'Resposta enviada',
+                editing: 'Voc\u00ea pode editar antes de enviar',
                 error: 'Erro na transcri\u00e7\u00e3o',
                 retry: 'Tentar novamente',
-                rerecord: 'Gravar novamente',
                 permissionDenied: '\u00c9 necess\u00e1rio acesso ao microfone',
                 notSupported: 'Seu navegador n\u00e3o suporta grava\u00e7\u00e3o de \u00e1udio',
                 maxReached: 'Dura\u00e7\u00e3o m\u00e1xima atingida'
@@ -138,15 +148,19 @@
         var t = texts[lang] || texts.es;
 
         // --- State ---
-        var state = 'idle'; // idle | recording | uploading | success | error
+        var state = 'idle'; // idle | recording | uploading | submitted | error
         var mediaRecorder = null;
         var audioChunks = [];
         var timerInterval = null;
         var seconds = 0;
-        var transcriptionText = '';
         var errorMsg = '';
         var showBranding = false;
         var configLoaded = false;
+        var voiceJustFinished = false; // true after voice transcription fills textarea
+
+        // --- DOM refs (set during render) ---
+        var textareaEl = null;
+        var statusEl = null;
 
         // --- Write transcription to host form field ---
         function writeToFormField(text) {
@@ -202,74 +216,114 @@
         // --- Render ---
         function render() {
             wrapper.innerHTML = '';
-            switch (state) {
-                case 'idle': renderIdle(); break;
-                case 'recording': renderRecording(); break;
-                case 'uploading': renderUploading(); break;
-                case 'success': renderSuccess(); break;
-                case 'error': renderError(); break;
+
+            // Always render textarea (disabled during recording/uploading)
+            var ta = el('textarea', {
+                className: 'gv-textarea',
+                placeholder: state === 'recording' ? t.recording : state === 'uploading' ? t.transcribing : t.placeholder
+            });
+            ta.rows = 3;
+            if (state === 'recording' || state === 'uploading') {
+                ta.disabled = true;
+                ta.classList.add('gv-textarea-disabled');
             }
+            if (state === 'submitted') {
+                ta.disabled = true;
+                ta.classList.add('gv-textarea-disabled');
+            }
+            // Preserve textarea value
+            if (textareaEl && textareaEl.value && state !== 'submitted') {
+                ta.value = textareaEl.value;
+            }
+            wrapper.appendChild(ta);
+            textareaEl = ta;
+
+            // Sync to form field on input
+            ta.addEventListener('input', function () {
+                writeToFormField(ta.value);
+            });
+
+            // Status message area
+            var stArea = el('div', { className: 'gv-status' });
+            wrapper.appendChild(stArea);
+            statusEl = stArea;
+
+            // Recording indicator (timer + pulse)
+            if (state === 'recording') {
+                var indicator = el('div', { className: 'gv-recording-indicator' });
+                indicator.innerHTML = '<span class="gv-pulse"></span> <span class="gv-timer">' + formatTime(seconds) + '</span>';
+                stArea.appendChild(indicator);
+            }
+
+            // Uploading spinner
+            if (state === 'uploading') {
+                var uploading = el('div', { className: 'gv-uploading' });
+                var elapsed = uploadStartedAt ? (Date.now() - uploadStartedAt) / 1000 : 0;
+                var msg = elapsed > 15 ? t.transcribingLong : t.transcribing;
+                uploading.innerHTML = '<div class="gv-spinner"></div><span>' + msg + '</span>';
+                stArea.appendChild(uploading);
+            }
+
+            // Success/submitted message
+            if (state === 'submitted') {
+                var successMsg = el('div', { className: 'gv-msg gv-success-msg' });
+                successMsg.innerHTML = checkSvgSmall() + ' ' + t.submitted;
+                stArea.appendChild(successMsg);
+            }
+
+            // Editing hint after voice transcription
+            if (voiceJustFinished && state === 'idle') {
+                var hint = el('div', { className: 'gv-msg gv-editing-hint' });
+                hint.textContent = t.editing;
+                stArea.appendChild(hint);
+            }
+
+            // Error message
+            if (state === 'error') {
+                var errEl = el('div', { className: 'gv-msg gv-error-msg' });
+                errEl.textContent = errorMsg || t.error;
+                stArea.appendChild(errEl);
+            }
+
+            // Action buttons row
+            var actions = el('div', { className: 'gv-actions' });
+            wrapper.appendChild(actions);
+
+            var hasMic = navigator.mediaDevices && navigator.mediaDevices.getUserMedia && typeof MediaRecorder !== 'undefined';
+
+            if (state === 'idle' || state === 'error') {
+                // Mic/dictate button
+                if (hasMic) {
+                    var micBtn = el('button', { className: 'gv-btn gv-btn-mic', onclick: startRecording });
+                    micBtn.innerHTML = micSvg() + ' <span>' + t.dictate + '</span>';
+                    actions.appendChild(micBtn);
+                }
+
+                // Submit button
+                var submitBtn = el('button', { className: 'gv-btn gv-btn-submit', onclick: submitText });
+                submitBtn.innerHTML = '<span>' + t.submit + '</span> ' + checkSvgSmall();
+                if (!textareaEl.value || !textareaEl.value.trim()) {
+                    submitBtn.disabled = true;
+                    submitBtn.classList.add('gv-btn-disabled');
+                }
+                actions.appendChild(submitBtn);
+            }
+
+            if (state === 'recording') {
+                // Stop button
+                var stopBtn = el('button', { className: 'gv-btn gv-btn-stop', onclick: stopRecording });
+                stopBtn.innerHTML = stopSvg() + ' <span>' + t.stop + '</span>';
+                actions.appendChild(stopBtn);
+            }
+
+            if (state === 'submitted') {
+                // Allow new response
+                var resetBtn = el('button', { className: 'gv-btn gv-btn-secondary', onclick: resetWidget });
+                resetBtn.textContent = t.retry;
+                actions.appendChild(resetBtn);
+            }
+
             renderBranding();
-        }
-
-        function renderIdle() {
-            // Check browser support (includes MediaRecorder for iOS Safari <14.6)
-            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || typeof MediaRecorder === 'undefined') {
-                var msg = el('div', { className: 'gv-msg gv-error-msg' });
-                msg.textContent = t.notSupported;
-                wrapper.appendChild(msg);
-                return;
-            }
-            var btn = el('button', { className: 'gv-btn gv-btn-record', onclick: startRecording });
-            btn.innerHTML = micSvg() + ' <span>' + t.record + '</span>';
-            wrapper.appendChild(btn);
-        }
-
-        function renderRecording() {
-            var top = el('div', { className: 'gv-recording-indicator' });
-            top.innerHTML = '<span class="gv-pulse"></span> <span class="gv-timer">' + formatTime(seconds) + '</span>';
-            wrapper.appendChild(top);
-
-            var btn = el('button', { className: 'gv-btn gv-btn-stop', onclick: stopRecording });
-            btn.innerHTML = stopSvg() + ' <span>' + t.stop + '</span>';
-            wrapper.appendChild(btn);
-        }
-
-        function renderUploading() {
-            var elapsed = uploadStartedAt ? (Date.now() - uploadStartedAt) / 1000 : 0;
-            var msg = elapsed > 15 ? t.transcribingLong : t.transcribing;
-            wrapper.innerHTML = '<div class="gv-uploading"><div class="gv-spinner"></div><span>' + msg + '</span></div>';
-        }
-
-        function renderSuccess() {
-            var check = el('div', { className: 'gv-success-icon' });
-            check.innerHTML = checkSvg();
-            wrapper.appendChild(check);
-
-            var msgEl = el('div', { className: 'gv-msg gv-success-msg' });
-            msgEl.textContent = t.success;
-            wrapper.appendChild(msgEl);
-
-            if (transcriptionText) {
-                var preview = el('div', { className: 'gv-preview' });
-                preview.textContent = transcriptionText.length > 200
-                    ? transcriptionText.substring(0, 200) + '...'
-                    : transcriptionText;
-                wrapper.appendChild(preview);
-            }
-
-            var btn = el('button', { className: 'gv-btn gv-btn-secondary', onclick: resetWidget });
-            btn.textContent = t.rerecord;
-            wrapper.appendChild(btn);
-        }
-
-        function renderError() {
-            var msgEl = el('div', { className: 'gv-msg gv-error-msg' });
-            msgEl.textContent = errorMsg || t.error;
-            wrapper.appendChild(msgEl);
-            var btn = el('button', { className: 'gv-btn gv-btn-retry', onclick: resetWidget });
-            btn.textContent = t.retry;
-            wrapper.appendChild(btn);
         }
 
         function renderBranding() {
@@ -285,8 +339,10 @@
             if (!theme) return;
             var css = [];
             if (theme.primary_color) {
-                css.push('.gv-btn-record{background:' + theme.primary_color + '}');
-                css.push('.gv-btn-record:hover{background:' + theme.primary_color + ';filter:brightness(0.9)}');
+                css.push('.gv-btn-mic{background:' + theme.primary_color + '}');
+                css.push('.gv-btn-mic:hover{background:' + theme.primary_color + ';filter:brightness(0.9)}');
+                css.push('.gv-btn-submit{background:' + theme.primary_color + '}');
+                css.push('.gv-btn-submit:hover{background:' + theme.primary_color + ';filter:brightness(0.9)}');
                 css.push('.gv-spinner{border-top-color:' + theme.primary_color + '}');
             }
             if (theme.background) {
@@ -305,10 +361,60 @@
             }
         }
 
+        // --- Submit text (typed answer) ---
+        function submitText() {
+            if (!textareaEl || !textareaEl.value.trim()) return;
+            if (state === 'uploading' || state === 'submitted') return;
+
+            var text = textareaEl.value.trim();
+            state = 'uploading';
+            render();
+
+            fetch(apiUrl + '/api/text-response', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-project-key': projectKey
+                },
+                body: JSON.stringify({
+                    session_id: sessionId,
+                    question_id: questionId,
+                    text: text,
+                    language: lang
+                })
+            })
+            .then(function (response) {
+                if (!response.ok) throw new Error('Server error: ' + response.status);
+                return response.json();
+            })
+            .then(function (data) {
+                if (data.success) {
+                    writeToFormField(text);
+                    state = 'submitted';
+                    voiceJustFinished = false;
+                    // Keep text in textarea (disabled)
+                    render();
+                    if (textareaEl) textareaEl.value = text;
+                } else {
+                    errorMsg = data.error || t.error;
+                    state = 'error';
+                    render();
+                    if (textareaEl) textareaEl.value = text;
+                }
+            })
+            .catch(function () {
+                errorMsg = t.error;
+                state = 'error';
+                render();
+                if (textareaEl) textareaEl.value = text;
+            });
+        }
+
         // --- Recording logic ---
         function startRecording() {
-            if (state !== 'idle') return; // Guard against double-click
-            state = 'recording'; // Set immediately to prevent race
+            if (state !== 'idle' && state !== 'error') return;
+            state = 'recording';
+            voiceJustFinished = false;
             navigator.mediaDevices.getUserMedia({ audio: true })
                 .then(function (stream) {
                     try {
@@ -331,7 +437,6 @@
 
                         mediaRecorder.start(1000);
                     } catch (e) {
-                        // Stop stream tracks to release microphone if MediaRecorder setup fails
                         stream.getTracks().forEach(function (track) { track.stop(); });
                         errorMsg = t.error;
                         state = 'error';
@@ -343,9 +448,6 @@
                         seconds++;
                         if (seconds >= maxDuration) {
                             stopRecording();
-                            // Show brief max-reached notice in uploading state
-                            var notice = wrapper.querySelector('.gv-uploading span');
-                            if (notice) notice.textContent = t.maxReached;
                             return;
                         }
                         var timerEl = wrapper.querySelector('.gv-timer');
@@ -356,7 +458,7 @@
                 })
                 .catch(function (err) {
                     errorMsg = (err && err.name === 'NotFoundError')
-                        ? t.notSupported   // No microphone hardware
+                        ? t.notSupported
                         : t.permissionDenied;
                     state = 'error';
                     render();
@@ -389,12 +491,12 @@
             formData.append('duration_seconds', String(seconds));
             formData.append('language', lang);
 
-            // Show "processing" message after 15s of waiting
+            // Show "processing" message after 15s
             var longTimer = setTimeout(function () {
                 if (state === 'uploading') render();
             }, 15000);
 
-            // Abort fetch after 120s to prevent indefinite hang
+            // Abort fetch after 120s
             var controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
             var fetchTimeout = setTimeout(function () {
                 if (controller) controller.abort();
@@ -413,21 +515,28 @@
             .then(function (data) {
                 clearTimeout(fetchTimeout);
                 clearTimeout(longTimer);
-                if (state !== 'uploading') return; // Guard: ignore if retry already resolved
+                if (state !== 'uploading') return;
                 if (data.success && data.status === 'completed') {
-                    transcriptionText = data.transcription || '';
-                    state = 'success';
-                    writeToFormField(transcriptionText);
+                    var transcription = data.transcription || '';
+                    // Fill textarea with transcription (editable)
+                    state = 'idle';
+                    voiceJustFinished = true;
+                    render();
+                    if (textareaEl) {
+                        textareaEl.value = transcription;
+                        textareaEl.focus();
+                    }
+                    writeToFormField(transcription);
                 } else {
                     errorMsg = data.error || t.error;
                     state = 'error';
+                    render();
                 }
-                render();
             })
             .catch(function () {
                 clearTimeout(longTimer);
                 clearTimeout(fetchTimeout);
-                if (state !== 'uploading') return; // Guard: ignore if retry already resolved
+                if (state !== 'uploading') return;
                 if (attempt < 2) {
                     setTimeout(function () { uploadAudio(blob, attempt + 1); }, 3000);
                     return;
@@ -445,11 +554,12 @@
             }
             mediaRecorder = null;
             state = 'idle';
-            transcriptionText = '';
             errorMsg = '';
             seconds = 0;
-            writeToFormField('');
+            voiceJustFinished = false;
             render();
+            if (textareaEl) textareaEl.value = '';
+            writeToFormField('');
         }
 
         // --- Fetch widget config (non-blocking) ---
@@ -512,6 +622,8 @@
         if (attrs) {
             Object.keys(attrs).forEach(function (k) {
                 if (k === 'className') e.className = attrs[k];
+                else if (k === 'classList') { /* skip, handled via className */ }
+                else if (k === 'placeholder') e.placeholder = attrs[k];
                 else if (k.indexOf('on') === 0) e.addEventListener(k.substring(2), attrs[k]);
                 else e.setAttribute(k, attrs[k]);
             });
@@ -521,45 +633,75 @@
 
     // --- SVG Icons ---
     function micSvg() {
-        return '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>';
+        return '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>';
     }
 
     function stopSvg() {
-        return '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>';
+        return '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>';
     }
 
-    function checkSvg() {
-        return '<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>';
+    function checkSvgSmall() {
+        return '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
     }
 
     // --- Styles ---
     function getStyles() {
         return [
             ':host { display: block; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }',
-            '.gv-widget { padding: 16px; border: 1px solid #e2e8f0; border-radius: 12px; background: #fff; text-align: center; max-width: 400px; }',
-            '.gv-btn { display: inline-flex; align-items: center; gap: 8px; padding: 12px 24px; border: none; border-radius: 8px; font-size: 15px; font-weight: 500; cursor: pointer; transition: all 0.2s; }',
-            '.gv-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }',
+            '.gv-widget { padding: 16px; border: 1px solid #e2e8f0; border-radius: 12px; background: #fff; max-width: 400px; }',
+
+            // Textarea
+            '.gv-textarea { display: block; width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; font-family: inherit; line-height: 1.5; resize: vertical; min-height: 60px; color: #1e293b; background: #fff; transition: border-color 0.2s; }',
+            '.gv-textarea:focus { outline: none; border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,0.1); }',
+            '.gv-textarea::placeholder { color: #94a3b8; }',
+            '.gv-textarea-disabled { background: #f8fafc; color: #64748b; cursor: not-allowed; }',
+
+            // Status area
+            '.gv-status { min-height: 24px; margin-top: 8px; }',
+
+            // Actions row
+            '.gv-actions { display: flex; gap: 8px; margin-top: 10px; justify-content: flex-end; }',
+
+            // Buttons
+            '.gv-btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border: none; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; transition: all 0.2s; line-height: 1; }',
+            '.gv-btn:hover { transform: translateY(-1px); box-shadow: 0 2px 8px rgba(0,0,0,0.12); }',
             '.gv-btn:active { transform: translateY(0); }',
-            '.gv-btn-record { background: #6366f1; color: #fff; }',
-            '.gv-btn-record:hover { background: #4f46e5; }',
+            '.gv-btn svg { flex-shrink: 0; }',
+
+            // Mic/dictate button
+            '.gv-btn-mic { background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; }',
+            '.gv-btn-mic:hover { background: #e2e8f0; color: #334155; }',
+
+            // Submit button
+            '.gv-btn-submit { background: #6366f1; color: #fff; }',
+            '.gv-btn-submit:hover { background: #4f46e5; }',
+            '.gv-btn-disabled { opacity: 0.4; cursor: not-allowed; pointer-events: none; }',
+
+            // Stop button
             '.gv-btn-stop { background: #ef4444; color: #fff; }',
             '.gv-btn-stop:hover { background: #dc2626; }',
-            '.gv-btn-secondary { background: #f1f5f9; color: #334155; margin-top: 12px; }',
+
+            // Secondary button
+            '.gv-btn-secondary { background: #f1f5f9; color: #334155; }',
             '.gv-btn-secondary:hover { background: #e2e8f0; }',
-            '.gv-btn-retry { background: #f59e0b; color: #fff; margin-top: 12px; }',
-            '.gv-btn-retry:hover { background: #d97706; }',
-            '.gv-btn svg { flex-shrink: 0; }',
-            '.gv-recording-indicator { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 16px; font-size: 24px; font-weight: 600; color: #ef4444; font-variant-numeric: tabular-nums; }',
-            '.gv-pulse { display: inline-block; width: 12px; height: 12px; background: #ef4444; border-radius: 50%; animation: gv-pulse-anim 1s ease-in-out infinite; }',
+
+            // Recording indicator
+            '.gv-recording-indicator { display: flex; align-items: center; gap: 8px; font-size: 18px; font-weight: 600; color: #ef4444; font-variant-numeric: tabular-nums; }',
+            '.gv-pulse { display: inline-block; width: 10px; height: 10px; background: #ef4444; border-radius: 50%; animation: gv-pulse-anim 1s ease-in-out infinite; }',
             '@keyframes gv-pulse-anim { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(1.3); } }',
-            '.gv-uploading { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 20px 0; color: #64748b; font-size: 15px; }',
-            '.gv-spinner { width: 24px; height: 24px; border: 3px solid #e2e8f0; border-top-color: #6366f1; border-radius: 50%; animation: gv-spin 0.8s linear infinite; }',
+
+            // Uploading
+            '.gv-uploading { display: flex; align-items: center; gap: 10px; color: #64748b; font-size: 14px; }',
+            '.gv-spinner { width: 20px; height: 20px; border: 2px solid #e2e8f0; border-top-color: #6366f1; border-radius: 50%; animation: gv-spin 0.8s linear infinite; }',
             '@keyframes gv-spin { to { transform: rotate(360deg); } }',
-            '.gv-success-icon { color: #22c55e; margin-bottom: 8px; }',
-            '.gv-msg { font-size: 15px; font-weight: 500; margin-bottom: 4px; }',
+
+            // Messages
+            '.gv-msg { font-size: 13px; font-weight: 500; display: flex; align-items: center; gap: 4px; }',
             '.gv-success-msg { color: #16a34a; }',
-            '.gv-error-msg { color: #dc2626; margin-bottom: 12px; }',
-            '.gv-preview { font-size: 13px; color: #64748b; background: #f8fafc; padding: 12px; border-radius: 8px; margin-top: 12px; text-align: left; line-height: 1.5; max-height: 120px; overflow-y: auto; }',
+            '.gv-editing-hint { color: #6366f1; font-weight: 400; font-style: italic; }',
+            '.gv-error-msg { color: #dc2626; }',
+
+            // Branding
             '.gv-branding { margin-top: 10px; text-align: center; font-size: 11px; }',
             '.gv-branding a { color: #94a3b8; text-decoration: none; }',
             '.gv-branding a:hover { color: #6366f1; text-decoration: underline; }'

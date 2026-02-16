@@ -1,15 +1,15 @@
 # Voice Capture - Especificación de Producto
 
 **Producto:** Voice Capture (Genius Labs AI Suite)
-**Versión:** 1.6
-**Última actualización:** 2026-02-15
+**Versión:** 1.7
+**Última actualización:** 2026-02-16
 
 ---
 
 ## Resumen Ejecutivo
 
 ### Propósito
-Permitir a los encuestados responder preguntas abiertas usando audio en lugar de texto, con transcripción automática mediante IA.
+Permitir a los encuestados responder preguntas abiertas usando audio o texto, con transcripción automática mediante IA para respuestas de voz.
 
 ### Problema que Resuelve
 - Los respondentes abandonan encuestas con muchas preguntas abiertas (fatiga de escritura)
@@ -107,6 +107,7 @@ Permitir a los encuestados responder preguntas abiertas usando audio en lugar de
 │  ├─ audio_url (S3)                                              │
 │  ├─ transcription (text)                                        │
 │  ├─ duration_seconds (int)                                      │
+│  ├─ input_method (voice|text, default voice)                    │
 │  ├─ language (string)                                           │
 │  ├─ status (pending|processing|completed|failed)                │
 │  ├─ created_at (timestamp)                                      │
@@ -134,7 +135,7 @@ Permitir a los encuestados responder preguntas abiertas usando audio en lugar de
 
 | Componente | Tecnología | Razón |
 |------------|------------|-------|
-| Widget (voice.js v1.6) | Vanilla JS + MediaRecorder API | Sin dependencias, funciona en cualquier sitio |
+| Widget (voice.js v1.7) | Vanilla JS + MediaRecorder API | Sin dependencias, funciona en cualquier sitio |
 | Dashboard | React + shadcn/ui + Tailwind (Lovable) | Desarrollo rápido, consistente con Survey Coder PRO |
 | Backend API | Node.js + Express (Claude Code) | Control total, desarrollo con AI |
 | Auth | Supabase Auth | Consistente con otros productos |
@@ -411,7 +412,7 @@ Voice Capture ofrece dos modos para optimizar costos según las necesidades del 
 
 ---
 
-## Widget: voice.js (v1.6)
+## Widget: voice.js (v1.7)
 
 ### Funcionalidad del Script
 
@@ -423,18 +424,41 @@ Voice Capture ofrece dos modos para optimizar costos según las necesidades del 
 // El script automáticamente:
 // 1. Detecta el session_id de Alchemer via merge code
 // 2. Fetch config desde /api/widget-config/:projectKey (max_duration, branding, theme)
-// 3. Renderiza el widget de grabación con tema custom (si Pro)
-// 4. Maneja permisos de micrófono
-// 5. Graba, muestra preview, permite re-grabar
-// 6. Sube el audio a la API con session_id
-// 7. Muestra badge "Powered by Survey Genius" (si Free tier)
+// 3. Renderiza textarea + botón dictar + botón enviar
+// 4. Maneja permisos de micrófono (solo si el usuario usa dictado)
+// 5. Dictado llena el textarea (editable antes de enviar)
+// 6. Envío de texto: POST /api/text-response (sin Whisper, $0 costo)
+// 7. Envío de voz: POST /api/transcribe → Whisper → texto llena textarea
+// 8. Muestra badge "Powered by Survey Genius" (si Free tier)
 ```
 
-### Features v1.6
+### Features v1.7
+- **Dual-mode**: Textarea siempre visible + botón "Dictar" + botón "Enviar"
+- **Texto como default**: Los usuarios pueden escribir directamente sin necesidad de usar voz
+- **Dictado llena textarea**: La transcripción de voz llena el textarea, el usuario puede editar antes de enviar
+- **input_method tracking**: Cada respuesta registra si fue `'voice'` o `'text'`
 - **Config fetch**: Al iniciar, consulta `/api/widget-config/:projectKey` para obtener max_duration, branding y tema
 - **Branding badge**: Plan Free muestra "Powered by Survey Genius" al pie del widget
 - **Temas custom**: Plan Pro permite colores personalizados (`primary_color`, `background`, `border_radius`)
 - **API URL**: Apunta a `https://voiceapi.survey-genius.ai` por defecto
+
+### UX Flow v1.7
+
+```
+┌──────────────────────────────────────┐
+│  ┌──────────────────────────────┐    │
+│  │ Escribe tu respuesta aquí...│    │
+│  │                              │    │
+│  └──────────────────────────────┘    │
+│                                      │
+│  [ 🎤 Dictar ]       [ Enviar ✓ ]   │
+│                                      │
+│  Powered by Survey Genius  (free)    │
+└──────────────────────────────────────┘
+```
+
+**Flujo texto:** Escribir → Enviar → POST /api/text-response → guardado (sin Whisper)
+**Flujo voz:** Click Dictar → grabar → detener → Whisper transcribe → texto llena textarea (editable) → usuario puede editar → la respuesta de voz ya se guardó server-side
 
 ### Integración con Alchemer Session ID
 
@@ -766,6 +790,7 @@ Retorna configuración del widget para un proyecto (público, usado por voice.js
 | audio_size_bytes | int | Tamaño del archivo |
 | duration_seconds | int | Duración del audio |
 | transcription | text | Texto transcrito (null si pending) |
+| input_method | varchar(10) | 'voice' o 'text' (default 'voice') |
 | language_detected | varchar(5) | Idioma detectado por Whisper |
 | status | enum | pending, processing, completed, failed |
 | error_message | text | Si falló, el mensaje de error |
@@ -958,11 +983,14 @@ CREATE POLICY batches_user_policy ON transcription_batches
 - JOIN manual por session_id
 - Deploy: Railway (API) + Lovable (Dashboard)
 
-### Fase 1.6-1.7: Tiers + Usage (v1.6-v1.7) -- COMPLETADO
+### Fase 1.6-1.7: Tiers + Usage + Dual Mode (v1.6-v1.7) -- COMPLETADO
 - 4 planes: Free / Freelancer ($39) / Pro ($199) / Enterprise ($499)
 - Usage tracking mensual con enforcement en middleware
 - Dashboard de uso (barra de progreso, tabla comparativa 4 tiers)
 - Widget v1.6: config fetch, branding badge (Free), temas custom (Pro+)
+- Widget v1.7: dual-mode (textarea + dictado), input_method tracking
+- POST /api/text-response: endpoint para respuestas escritas (sin Whisper)
+- Columna `input_method` en recordings (voice/text)
 - CORS dinamico para dominios custom (Pro+)
 - Dominio profesional: `voiceapi.survey-genius.ai`
 - Pricing competitivo validado vs Voxpopme ($40K+/ano), Phonic ($36), Qualtrics ($420)

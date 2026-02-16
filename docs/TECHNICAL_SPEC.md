@@ -3,7 +3,7 @@
 **Proyecto:** voice-capture-api  
 **Tipo:** Backend API  
 **Stack:** Node.js + Express + Supabase + OpenAI Whisper  
-**Última actualización:** 2026-02-15
+**Última actualización:** 2026-02-16
 
 ---
 
@@ -80,6 +80,7 @@ voice-capture-api/
 │   │   ├── recordings.js        # CRUD grabaciones
 │   │   ├── transcribe.js        # Batch transcription
 │   │   ├── transcribeImmediate.js # Transcripción inmediata (real-time)
+│   │   ├── textResponse.js      # POST /api/text-response (typed answers)
 │   │   ├── export.js            # Export CSV/Excel
 │   │   ├── account.js           # GET /api/account/usage + /plans
 │   │   └── widgetConfig.js      # GET /api/widget-config/:key (público)
@@ -99,9 +100,10 @@ voice-capture-api/
 │       └── schemas.js           # Esquemas Zod
 ├── database/
 │   ├── schema.sql               # Schema inicial (projects, recordings, batches)
-│   └── migration_002_plans_usage.sql # user_profiles + usage tables
+│   ├── migration_002_plans_usage.sql # user_profiles + usage tables
+│   └── migration_004_input_method.sql # input_method column on recordings
 ├── public/
-│   └── voice.js                 # Widget v1.6
+│   └── voice.js                 # Widget v1.7 (dual-mode: text + voice)
 ├── tests/
 │   └── ...
 ├── .env.example
@@ -159,6 +161,7 @@ CREATE TABLE recordings (
     audio_size_bytes INTEGER,
     duration_seconds INTEGER,
     transcription TEXT,
+    input_method VARCHAR(10) DEFAULT 'voice',
     language_detected VARCHAR(5),
     status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'processing', 'completed', 'failed')),
     error_message TEXT,
@@ -546,13 +549,46 @@ duration_seconds: 45
 
 **CSV Format:**
 ```csv
-session_id,transcription,duration_seconds,status,created_at,transcribed_at
-1767819533_695ec90d302493.52725793,"El producto me pareció muy bueno...",45,completed,2026-01-21T10:30:00Z,2026-01-21T10:30:45Z
+session_id,transcription,input_method,duration_seconds,status,created_at,transcribed_at
+1767819533_695ec90d302493.52725793,"El producto me pareció muy bueno...",voice,45,completed,2026-01-21T10:30:00Z,2026-01-21T10:30:45Z
 ```
 
 ---
 
-### 9. POST /api/projects/:projectId/recordings/:recordingId/retranscribe
+### 9. POST /api/text-response (v1.7)
+
+**Propósito:** Guardar respuesta de texto (sin audio, sin Whisper).
+
+**Autenticación:** `x-project-key` header
+
+**Request:**
+```json
+{
+    "session_id": "1767819533_695ec90d302493.52725793",
+    "question_id": "q5",
+    "text": "El producto me pareció muy bueno porque...",
+    "language": "es"
+}
+```
+
+**Lógica:**
+1. Validar project key + plan + usage (via `validateProjectKey`)
+2. Insertar recording con `input_method: 'text'`, `status: 'completed'`, `audio_path: 'text-input'`
+3. Incrementar usage counter
+4. Retornar recording_id
+
+**Response (200):**
+```json
+{
+    "success": true,
+    "recording_id": "uuid",
+    "status": "completed"
+}
+```
+
+---
+
+### 10. POST /api/projects/:projectId/recordings/:recordingId/retranscribe
 
 **Propósito:** Re-procesar transcripción de un audio.
 
