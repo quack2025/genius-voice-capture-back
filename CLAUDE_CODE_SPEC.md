@@ -3,7 +3,7 @@
 **Proyecto:** voice-capture-api  
 **Tipo:** Backend API  
 **Stack:** Node.js + Express + Supabase + OpenAI Whisper  
-**Última actualización:** 2026-02-16
+**Última actualización:** 2026-02-17
 
 ---
 
@@ -100,7 +100,7 @@ voice-capture-api/
 │   ├── validators/
 │   │   └── schemas.js           # Esquemas Zod
 │   └── widget/
-│       └── voice.js             # Widget SOURCE (readable, v1.8)
+│       └── voice.js             # Widget SOURCE (readable, v1.9)
 ├── scripts/
 │   └── build-widget.js          # Minify voice.js → dist/voice.min.js (terser)
 ├── dist/                        # (gitignored) Build output
@@ -398,7 +398,7 @@ duration_seconds: 45
         "transcription_mode": "realtime",
         "created_at": "2026-01-21T10:00:00Z"
     },
-    "snippet": "<div id=\"genius-voice\" data-project=\"proj_ABC123XYZ\"></div>\n<script src=\"https://cdn.geniuslabs.ai/voice.js\"></script>"
+    "snippet": "<div id=\"genius-voice\" data-project=\"proj_ABC123XYZ\"></div>\n<script src=\"https://voiceapi.survey-genius.ai/voice.js\"></script>"
 }
 ```
 
@@ -739,6 +739,53 @@ session_id,transcription,duration_seconds,status,created_at,transcribed_at
 
 ---
 
+### 14. GET /api/projects/:projectId/allowed-domains (v1.9)
+
+**Propósito:** Obtener la lista de dominios permitidos de un proyecto (domain locking).
+
+**Autenticación:** JWT Supabase
+
+**Response:**
+```json
+{
+    "success": true,
+    "allowed_domains": ["*.alchemer.com", "*.alchemer.eu", "mycompany.com"]
+}
+```
+
+*Array vacío significa sin restricción de dominio (permite todos).*
+
+---
+
+### 15. PUT /api/projects/:projectId/allowed-domains (v1.9)
+
+**Propósito:** Configurar la lista de dominios permitidos de un proyecto.
+
+**Autenticación:** JWT Supabase
+
+**Request:**
+```json
+{
+    "domains": ["*.alchemer.com", "*.alchemer.eu", "mycompany.com"]
+}
+```
+
+**Lógica:**
+1. Validar ownership del proyecto
+2. Validar que cada dominio sea string no vacío (max 253 chars)
+3. Merge en `project.settings.allowed_domains` (preserva otros settings)
+4. Array vacío desactiva domain locking
+
+**Response:**
+```json
+{
+    "success": true,
+    "allowed_domains": ["*.alchemer.com", "*.alchemer.eu", "mycompany.com"]
+}
+```
+
+---
+
 ## Servicio de Transcripción (Whisper)
 
 ### src/services/whisper.js
@@ -1005,16 +1052,18 @@ CORS usa validación estática + dinámica (para dominios custom de plan Pro):
 allowedOrigins: [
     'https://voice.geniuslabs.ai',           // Dashboard
     'https://voiceapi.survey-genius.ai',     // API domain
+    'https://encuestas.genius-labs.com.co',  // Genius Labs surveys
     'http://localhost:3000',                  // Local dev
     'http://localhost:5173'                   // Vite dev
 ]
 
 // Wildcards via regex
 wildcardPatterns: [
-    /\.lovable\.app$/,     // Lovable preview
-    /\.alchemer\.com$/,    // Alchemer surveys
-    /\.alchemer\.eu$/,     // Alchemer EU
-    /\.surveygizmo\.com$/, // SurveyGizmo legacy
+    /\.lovable\.app$/,         // Lovable preview
+    /\.alchemer\.com$/,        // Alchemer surveys
+    /\.alchemer\.eu$/,         // Alchemer EU
+    /\.surveygizmo\.com$/,     // SurveyGizmo legacy
+    /\.genius-labs\.com\.co$/, // Genius Labs subdomains
 ]
 
 // index.js - CORS dinámico para custom domains (Pro)

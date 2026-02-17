@@ -2,7 +2,7 @@
 
 **Producto:** Voice Capture (Genius Labs AI Suite)
 **Versión:** 1.9
-**Última actualización:** 2026-02-16
+**Última actualización:** 2026-02-17
 
 ---
 
@@ -135,7 +135,7 @@ Permitir a los encuestados responder preguntas abiertas usando audio o texto, co
 
 | Componente | Tecnología | Razón |
 |------------|------------|-------|
-| Widget (voice.js v1.8) | Vanilla JS + MediaRecorder API | Sin dependencias, funciona en cualquier sitio |
+| Widget (voice.js v1.9) | Vanilla JS + MediaRecorder API | Sin dependencias, funciona en cualquier sitio |
 | Dashboard | React + shadcn/ui + Tailwind (Lovable) | Desarrollo rápido, consistente con Survey Coder PRO |
 | Backend API | Node.js + Express (Claude Code) | Control total, desarrollo con AI |
 | Auth | Supabase Auth | Consistente con otros productos |
@@ -428,7 +428,7 @@ Voice Capture ofrece dos modos para optimizar costos según las necesidades del 
 
 ---
 
-## Widget: voice.js (v1.8)
+## Widget: voice.js (v1.9)
 
 ### Funcionalidad del Script
 
@@ -754,6 +754,47 @@ Retorna configuración del widget para un proyecto (público, usado por voice.js
 
 ---
 
+### GET /api/projects/:projectId/allowed-domains
+Retorna la lista de dominios permitidos de un proyecto (domain locking).
+
+**Headers:** JWT Supabase
+
+**Response:**
+```json
+{
+  "success": true,
+  "allowed_domains": ["*.alchemer.com", "*.alchemer.eu", "mycompany.com"]
+}
+```
+
+*Array vacío = sin restricción de dominio.*
+
+---
+
+### PUT /api/projects/:projectId/allowed-domains
+Configura la lista de dominios permitidos para un proyecto.
+
+**Headers:** JWT Supabase
+
+**Request:**
+```json
+{
+  "domains": ["*.alchemer.com", "*.alchemer.eu", "mycompany.com"]
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "allowed_domains": ["*.alchemer.com", "*.alchemer.eu", "mycompany.com"]
+}
+```
+
+*Array vacío desactiva domain locking. Soporta wildcards (`*.example.com`).*
+
+---
+
 ## Modelo de Datos (Supabase)
 
 ### Tabla: user_profiles
@@ -1031,6 +1072,8 @@ CREATE POLICY batches_user_policy ON transcription_batches
 - **Widget minification**: voice.js source moved to src/widget/, built with terser to dist/voice.min.js (~60% smaller). Comments, variable names, and integration docs stripped from production.
 - **Dynamic widget serving**: /voice.js served via route handler (not express.static). Production serves minified from memory cache; dev serves readable source with no-cache.
 - **Domain locking**: Per-project `settings.allowed_domains` restricts which domains can use a project key. Validated in both `validateProjectKey` middleware and `widget-config` endpoint. Supports wildcards (*.alchemer.com). localhost always allowed for dev. Empty = allow all (backward compatible).
+- **Domain management API**: GET/PUT `/api/projects/:id/allowed-domains` for dashboard-friendly domain configuration.
+- **CORS update**: Added `encuestas.genius-labs.com.co` + `*.genius-labs.com.co` wildcard.
 - **Build pipeline**: `npm run build` runs terser; Railway auto-runs before start.
 
 ### Fase 2: Mejoras UX
