@@ -2,11 +2,11 @@
  * Plan definitions — single source of truth for tier limits.
  * No database table needed — only 4 fixed plans.
  *
- * Pricing strategy (v1.7):
+ * Pricing strategy (v2.0):
  *   Free      → generous trial, 100 responses
- *   Freelancer → $39/mo, 1,000 resp ($0.039/resp)
- *   Pro        → $199/mo, 10,000 resp ($0.020/resp) — half the per-response cost
- *   Enterprise → $499/mo, 50,000 resp ($0.010/resp) — half again
+ *   Starter   → $39/mo, 1,500 resp ($0.026/resp)  [key: freelancer]
+ *   Pro       → $199/mo, 10,000 resp ($0.020/resp)
+ *   Enterprise → $499/mo, 50,000 resp ($0.010/resp)
  */
 
 const PLANS = {
@@ -24,9 +24,9 @@ const PLANS = {
         custom_domains: false
     },
     freelancer: {
-        name: 'Freelancer',
+        name: 'Starter',
         price: 39,
-        max_responses: 1000,
+        max_responses: 1500,
         max_projects: 10,
         max_duration: 180,
         languages: ['es', 'en', 'pt', 'fr', 'de', 'it', 'ja', 'ko', 'zh'],
