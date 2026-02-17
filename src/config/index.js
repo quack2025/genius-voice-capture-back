@@ -33,6 +33,7 @@ const config = {
     allowedOrigins: [
         'https://voice.geniuslabs.ai',
         'https://voiceapi.survey-genius.ai',
+        'https://encuestas.genius-labs.com.co',
         'http://localhost:3000',
         'http://localhost:5173'
     ],
@@ -41,7 +42,8 @@ const config = {
         /^https:\/\/.*\.lovable\.app$/,
         /^https:\/\/.*\.alchemer\.com$/,
         /^https:\/\/.*\.alchemer\.eu$/,
-        /^https:\/\/.*\.surveygizmo\.com$/
+        /^https:\/\/.*\.surveygizmo\.com$/,
+        /^https:\/\/.*\.genius-labs\.com\.co$/
     ]
 };
 

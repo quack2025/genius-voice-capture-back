@@ -306,4 +306,104 @@ router.delete('/:projectId',
     })
 );
 
+/**
+ * GET /api/projects/:projectId/allowed-domains
+ * Get the allowed domains list for a project (domain locking config)
+ */
+router.get('/:projectId/allowed-domains',
+    requireAuth,
+    asyncHandler(async (req, res) => {
+        const { projectId } = req.params;
+        const userId = req.user.id;
+
+        const { data: project, error } = await supabaseAdmin
+            .from('projects')
+            .select('id, settings')
+            .eq('id', projectId)
+            .eq('user_id', userId)
+            .single();
+
+        if (error || !project) {
+            throw new HttpError(404, 'Project not found');
+        }
+
+        const allowedDomains = project.settings?.allowed_domains || [];
+
+        res.json({
+            success: true,
+            allowed_domains: allowedDomains
+        });
+    })
+);
+
+/**
+ * PUT /api/projects/:projectId/allowed-domains
+ * Set the allowed domains list for a project.
+ * Accepts an array of domain patterns (e.g. ["*.alchemer.com", "mysite.com"]).
+ * Empty array disables domain locking (allows all).
+ */
+router.put('/:projectId/allowed-domains',
+    requireAuth,
+    asyncHandler(async (req, res) => {
+        const { projectId } = req.params;
+        const userId = req.user.id;
+
+        const { domains } = req.body;
+
+        if (!Array.isArray(domains)) {
+            return res.status(400).json({
+                success: false,
+                error: 'domains must be an array of strings'
+            });
+        }
+
+        // Validate each domain pattern
+        for (const d of domains) {
+            if (typeof d !== 'string' || d.length === 0 || d.length > 253) {
+                return res.status(400).json({
+                    success: false,
+                    error: `Invalid domain: "${d}". Must be a non-empty string (max 253 chars).`
+                });
+            }
+        }
+
+        // Check ownership
+        const { data: project, error: fetchError } = await supabaseAdmin
+            .from('projects')
+            .select('id, settings')
+            .eq('id', projectId)
+            .eq('user_id', userId)
+            .single();
+
+        if (fetchError || !project) {
+            throw new HttpError(404, 'Project not found');
+        }
+
+        // Merge into existing settings (preserve other settings fields)
+        const updatedSettings = {
+            ...(project.settings || {}),
+            allowed_domains: domains
+        };
+
+        const { data: updated, error: updateError } = await supabaseAdmin
+            .from('projects')
+            .update({
+                settings: updatedSettings,
+                updated_at: new Date().toISOString()
+            })
+            .eq('id', projectId)
+            .select('id, settings')
+            .single();
+
+        if (updateError) {
+            throw new Error(`Failed to update allowed domains: ${updateError.message}`);
+        }
+
+        res.json({
+            success: true,
+            allowed_domains: updated.settings?.allowed_domains || []
+        });
+    })
+);
+
 module.exports = router;
