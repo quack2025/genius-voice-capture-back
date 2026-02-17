@@ -18,7 +18,7 @@ router.get('/usage',
         // Fetch user plan
         const { data: profile } = await supabaseAdmin
             .from('user_profiles')
-            .select('plan, plan_started_at')
+            .select('plan, plan_started_at, is_admin')
             .eq('id', userId)
             .single();
 
@@ -66,6 +66,7 @@ router.get('/usage',
         }
 
         res.json({
+            is_admin: profile?.is_admin || false,
             plan: planKey,
             plan_name: plan.name,
             plan_started_at: profile?.plan_started_at,

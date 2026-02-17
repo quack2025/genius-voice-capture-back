@@ -18,6 +18,7 @@ const transcribeImmediateRoutes = require('./routes/transcribeImmediate');
 const textResponseRoutes = require('./routes/textResponse');
 const widgetConfigRoutes = require('./routes/widgetConfig');
 const accountRoutes = require('./routes/account');
+const adminRoutes = require('./routes/admin');
 const path = require('path');
 const fs = require('fs');
 const { supabaseAdmin } = require('./config/supabase');
@@ -180,6 +181,7 @@ app.use('/api/projects/:projectId/transcribe-batch', apiLimiter, transcribeRoute
 app.use('/api/projects/:projectId/export', apiLimiter, exportRoutes);
 app.use('/api/widget-config', widgetConfigRoutes);
 app.use('/api/account', apiLimiter, accountRoutes);
+app.use('/api/admin', apiLimiter, adminRoutes);
 
 // 404 handler
 app.use((req, res) => {
