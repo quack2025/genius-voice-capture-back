@@ -21,7 +21,8 @@ const PLANS = {
         batch: false,
         show_branding: true,
         custom_themes: false,
-        custom_domains: false
+        custom_domains: false,
+        chat_messages_per_day: 5
     },
     freelancer: {
         name: 'Starter',
@@ -34,7 +35,8 @@ const PLANS = {
         batch: true,
         show_branding: false,
         custom_themes: false,
-        custom_domains: false
+        custom_domains: false,
+        chat_messages_per_day: 20
     },
     pro: {
         name: 'Pro',
@@ -47,7 +49,8 @@ const PLANS = {
         batch: true,
         show_branding: false,
         custom_themes: true,
-        custom_domains: true
+        custom_domains: true,
+        chat_messages_per_day: 50
     },
     enterprise: {
         name: 'Enterprise',
@@ -60,7 +63,8 @@ const PLANS = {
         batch: true,
         show_branding: false,
         custom_themes: true,
-        custom_domains: true
+        custom_domains: true,
+        chat_messages_per_day: 100
     }
 };
 
