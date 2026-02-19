@@ -118,13 +118,27 @@ router.post('/',
 
         // Increment monthly usage counter only on INSERT (not on UPDATE)
         if (req.usage) {
-            await supabaseAdmin
-                .from('usage')
-                .upsert({
+            if (req.usage.orgId) {
+                // Org user: increment org pool (quota) + personal (reporting)
+                await Promise.all([
+                    supabaseAdmin.from('org_usage').upsert({
+                        org_id: req.usage.orgId,
+                        month: req.usage.month,
+                        responses_count: req.usage.current + 1
+                    }, { onConflict: 'org_id,month' }),
+                    supabaseAdmin.from('usage').upsert({
+                        user_id: req.usage.userId,
+                        month: req.usage.month,
+                        responses_count: req.usage.personalCurrent + 1
+                    }, { onConflict: 'user_id,month' }),
+                ]);
+            } else {
+                await supabaseAdmin.from('usage').upsert({
                     user_id: req.usage.userId,
                     month: req.usage.month,
                     responses_count: req.usage.current + 1
                 }, { onConflict: 'user_id,month' });
+            }
         }
 
         return res.status(200).json({

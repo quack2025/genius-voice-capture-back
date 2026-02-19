@@ -270,4 +270,162 @@ router.put('/users/:userId/plan',
     })
 );
 
+/**
+ * GET /api/admin/orgs
+ * List all organizations with member count and usage.
+ */
+router.get('/orgs',
+    asyncHandler(async (req, res) => {
+        const currentMonth = getCurrentMonth();
+
+        const { data: orgs, error } = await supabaseAdmin
+            .from('organizations')
+            .select('id, name, plan, max_seats, owner_id, created_at')
+            .order('created_at', { ascending: false });
+
+        if (error) {
+            throw new Error(`Failed to fetch organizations: ${error.message}`);
+        }
+
+        if (!orgs || orgs.length === 0) {
+            return res.json({ success: true, orgs: [] });
+        }
+
+        // Get member counts + owner emails + usage
+        const orgIds = orgs.map(o => o.id);
+        const ownerIds = orgs.map(o => o.owner_id);
+
+        const [membersResult, usageResult, authResult] = await Promise.all([
+            supabaseAdmin.from('user_profiles').select('org_id').in('org_id', orgIds),
+            supabaseAdmin.from('org_usage').select('org_id, responses_count')
+                .in('org_id', orgIds).eq('month', currentMonth),
+            supabaseAdmin.auth.admin.listUsers({ page: 1, perPage: 1000 }),
+        ]);
+
+        const memberCounts = {};
+        if (membersResult.data) {
+            for (const row of membersResult.data) {
+                memberCounts[row.org_id] = (memberCounts[row.org_id] || 0) + 1;
+            }
+        }
+
+        const usageMap = {};
+        if (usageResult.data) {
+            for (const row of usageResult.data) {
+                usageMap[row.org_id] = row.responses_count;
+            }
+        }
+
+        const emailMap = {};
+        if (authResult.data?.users) {
+            for (const u of authResult.data.users) {
+                emailMap[u.id] = u.email;
+            }
+        }
+
+        const enriched = orgs.map(o => ({
+            ...o,
+            plan_name: getPlan(o.plan).name,
+            max_responses: getPlan(o.plan).max_responses,
+            owner_email: emailMap[o.owner_id] || 'unknown',
+            member_count: memberCounts[o.id] || 0,
+            responses_this_month: usageMap[o.id] || 0,
+        }));
+
+        res.json({ success: true, orgs: enriched });
+    })
+);
+
+/**
+ * POST /api/admin/orgs
+ * Create a new organization.
+ * Body: { name, ownerEmail, plan?, maxSeats? }
+ */
+router.post('/orgs',
+    asyncHandler(async (req, res) => {
+        const { name, ownerEmail, plan = 'enterprise', maxSeats = 10 } = req.body;
+
+        if (!name || !ownerEmail) {
+            return res.status(400).json({
+                success: false,
+                error: 'name and ownerEmail are required'
+            });
+        }
+
+        if (plan && !PLANS[plan]) {
+            return res.status(400).json({
+                success: false,
+                error: `Invalid plan. Must be one of: ${Object.keys(PLANS).join(', ')}`
+            });
+        }
+
+        // Find owner by email
+        const { data: { users } } = await supabaseAdmin.auth.admin.listUsers({ page: 1, perPage: 1000 });
+        const owner = users.find(u => u.email?.toLowerCase() === ownerEmail.toLowerCase());
+
+        if (!owner) {
+            throw new HttpError(404, `User not found: ${ownerEmail}`);
+        }
+
+        // Check owner isn't already in an org
+        const { data: ownerProfile } = await supabaseAdmin
+            .from('user_profiles')
+            .select('org_id')
+            .eq('id', owner.id)
+            .single();
+
+        if (ownerProfile?.org_id) {
+            return res.status(400).json({
+                success: false,
+                error: 'User already belongs to an organization'
+            });
+        }
+
+        // Create org
+        const { data: org, error: orgError } = await supabaseAdmin
+            .from('organizations')
+            .insert({
+                name,
+                plan,
+                owner_id: owner.id,
+                max_seats: maxSeats
+            })
+            .select()
+            .single();
+
+        if (orgError) {
+            throw new Error(`Failed to create organization: ${orgError.message}`);
+        }
+
+        // Set owner's org_id + org_role
+        const { error: updateError } = await supabaseAdmin
+            .from('user_profiles')
+            .update({
+                org_id: org.id,
+                org_role: 'owner',
+                updated_at: new Date().toISOString()
+            })
+            .eq('id', owner.id);
+
+        if (updateError) {
+            throw new Error(`Failed to link owner: ${updateError.message}`);
+        }
+
+        console.log(`[Admin] Organization created: ${name} (${org.id}), owner: ${ownerEmail}, plan: ${plan}`);
+
+        res.status(201).json({
+            success: true,
+            org: {
+                id: org.id,
+                name: org.name,
+                plan: org.plan,
+                plan_name: getPlan(org.plan).name,
+                max_seats: org.max_seats,
+                owner_id: owner.id,
+                owner_email: owner.email,
+            }
+        });
+    })
+);
+
 module.exports = router;
