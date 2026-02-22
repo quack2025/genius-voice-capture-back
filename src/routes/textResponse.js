@@ -3,6 +3,7 @@ const { validateProjectKey } = require('../middleware/projectKey');
 const { asyncHandler } = require('../middleware/errorHandler');
 const { textResponseSchema, validate } = require('../validators/schemas');
 const { supabaseAdmin } = require('../config/supabase');
+const { enrichMetadata } = require('../utils/platformDetection');
 
 const router = express.Router();
 
@@ -32,6 +33,7 @@ router.post('/',
         const { session_id, question_id, text, language, metadata } = bodyValidation.data;
         const project = req.project;
         const qid = question_id || null;
+        const enrichedMetadata = enrichMetadata(metadata, req);
 
         // Find existing text recording for this (project, session, question)
         let existingQuery = supabaseAdmin
@@ -73,7 +75,7 @@ router.post('/',
                 .update({
                     transcription: trimmedText,
                     language_detected: language || project.language || null,
-                    metadata: metadata || {},
+                    metadata: enrichedMetadata,
                     transcribed_at: new Date().toISOString()
                 })
                 .eq('id', existing.id)
@@ -105,7 +107,7 @@ router.post('/',
                 transcription: trimmedText,
                 language_detected: language || project.language || null,
                 input_method: 'text',
-                metadata: metadata || {},
+                metadata: enrichedMetadata,
                 status: 'completed',
                 transcribed_at: new Date().toISOString()
             })

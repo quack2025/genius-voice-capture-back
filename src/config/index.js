@@ -43,7 +43,15 @@ const config = {
         /^https:\/\/.*\.alchemer\.com$/,
         /^https:\/\/.*\.alchemer\.eu$/,
         /^https:\/\/.*\.surveygizmo\.com$/,
-        /^https:\/\/.*\.genius-labs\.com\.co$/
+        /^https:\/\/.*\.genius-labs\.com\.co$/,
+        // Multi-platform expansion
+        /^https:\/\/.*\.qualtrics\.com$/,
+        /^https:\/\/.*\.surveymonkey\.com$/,
+        /^https:\/\/.*\.questionpro\.com$/,
+        /^https:\/\/.*\.jotform\.com$/,
+        /^https:\/\/.*\.jotform\.pro$/,
+        /^https:\/\/.*\.typeform\.com$/,
+        /^https:\/\/.*\.formstack\.com$/,
     ]
 };
 

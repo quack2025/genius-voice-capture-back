@@ -7,6 +7,7 @@ const { transcribeFromBuffer, getExtensionFromMimeType } = require('../services/
 const { uploadAudio, validateAudioFile } = require('../services/storage');
 const { supabaseAdmin } = require('../config/supabase');
 const config = require('../config');
+const { enrichMetadata } = require('../utils/platformDetection');
 
 const router = express.Router();
 
@@ -64,6 +65,9 @@ router.post('/',
                                      const { session_id, question_id, duration_seconds, language, metadata } = bodyValidation.data;
                             const project = req.project;
 
+                                     // Enrich metadata with origin platform for analytics
+                                     const enrichedMetadata = enrichMetadata(metadata, req);
+
                                      // 3. Validate duration against plan limit
                                      const maxDuration = req.plan ? req.plan.max_duration : config.maxAudioDurationSeconds;
                                      if (duration_seconds && duration_seconds > maxDuration) {
@@ -105,7 +109,7 @@ router.post('/',
                                                                                  transcription: transcriptionResult.text,
                                                                                  language_detected: normalizeLanguageCode(transcriptionResult.language),
                                                                                  input_method: 'voice',
-                                                                                 metadata: metadata || {},
+                                                                                 metadata: enrichedMetadata,
                                                                                  status: 'completed',
                                                                                  transcribed_at: new Date().toISOString()
                                                          })
@@ -177,7 +181,7 @@ router.post('/',
                                                     audio_size_bytes: audioSize,
                                                     duration_seconds: duration_seconds || null,
                                                     input_method: 'voice',
-                                                    metadata: metadata || {},
+                                                    metadata: enrichedMetadata,
                                                     status: 'failed',
                                                     error_message: audioPath
                                                         ? `Whisper transcription failed: ${errorMessage}`
