@@ -1,6 +1,19 @@
 const { z } = require('zod');
 const { VALID_LANGUAGES } = require('../services/audioUtils');
 
+// Bounded metadata: max 20 keys, string values max 1000 chars, strip proto keys
+const safeMetadata = z.record(z.unknown()).optional().transform((val) => {
+    if (!val) return val;
+    const cleaned = {};
+    const keys = Object.keys(val).slice(0, 20);
+    for (const k of keys) {
+        if (k === '__proto__' || k === 'constructor' || k === 'prototype') continue;
+        const v = val[k];
+        cleaned[k] = typeof v === 'string' ? v.substring(0, 1000) : v;
+    }
+    return cleaned;
+});
+
 // Esquemas para Projects
 const createProjectSchema = z.object({
     name: z.string().min(1).max(255),
@@ -22,7 +35,7 @@ const uploadSchema = z.object({
     question_id: z.string().max(50).optional(),
     duration_seconds: z.coerce.number().int().min(1).max(300).optional(),
     language: z.enum(VALID_LANGUAGES).optional(),
-    metadata: z.record(z.unknown()).optional()
+    metadata: safeMetadata
 });
 
 // Esquemas para Recordings Query
@@ -43,7 +56,7 @@ const textResponseSchema = z.object({
     question_id: z.string().max(50).optional(),
     text: z.string().max(5000),
     language: z.enum(VALID_LANGUAGES).optional(),
-    metadata: z.record(z.unknown()).optional()
+    metadata: safeMetadata
 });
 
 // Esquemas para Export

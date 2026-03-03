@@ -239,7 +239,19 @@ router.post('/message', requireAuth, async (req, res) => {
         const userContent = [];
         if (image_url) {
             // Download image from Supabase storage and convert to base64
+            // SECURITY: Only allow fetching from our Supabase storage domain to prevent SSRF
+            const allowedHost = process.env.SUPABASE_URL ? new URL(process.env.SUPABASE_URL).hostname : null;
+            let isAllowedUrl = false;
             try {
+                const parsed = new URL(image_url);
+                isAllowedUrl = parsed.protocol === 'https:' && allowedHost && parsed.hostname === allowedHost;
+            } catch { /* invalid URL */ }
+
+            if (!isAllowedUrl) {
+                console.warn('Blocked image_url fetch (not Supabase storage):', image_url?.substring(0, 80));
+            }
+
+            if (isAllowedUrl) try {
                 const response = await fetch(image_url);
                 if (response.ok) {
                     const buffer = await response.arrayBuffer();
@@ -262,8 +274,10 @@ router.post('/message', requireAuth, async (req, res) => {
         claudeMessages.push({ role: 'user', content: userContent });
 
         // 5. Get system prompt with user context
+        // Sanitize current_page to prevent prompt injection (only allow path chars)
+        const safePage = (context?.current_page || '').replace(/[^\w\/\-\.]/g, '').substring(0, 100);
         const userContext = await getUserContext(req.user.id, {
-            current_page: context?.current_page,
+            current_page: safePage || '/dashboard',
             language: context?.language,
         });
         const systemPrompt = getSystemPrompt(userContext);

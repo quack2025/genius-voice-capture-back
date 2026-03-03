@@ -22,11 +22,21 @@ function detectPlatform(origin) {
  * Prefixed with _ to mark system-injected fields.
  */
 function enrichMetadata(metadata, req) {
-	const requestOrigin = req.headers.origin || req.headers.referer || null;
+	const rawOrigin = req.headers.origin || req.headers.referer || null;
+	// Sanitize: validate as URL and truncate to prevent storage abuse
+	let safeOrigin = null;
+	if (rawOrigin) {
+		try {
+			const parsed = new URL(rawOrigin);
+			safeOrigin = parsed.origin.substring(0, 2048);
+		} catch {
+			safeOrigin = 'invalid';
+		}
+	}
 	return {
 		...(metadata || {}),
-		_origin: requestOrigin,
-		_platform: detectPlatform(requestOrigin),
+		_origin: safeOrigin,
+		_platform: detectPlatform(rawOrigin),
 	};
 }
 

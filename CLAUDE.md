@@ -5,6 +5,18 @@ Express.js API for the Genius Voice Capture platform. Handles audio transcriptio
 **Part of:** Genius Labs AI Suite
 **Repos:** Backend (this) + [Frontend Dashboard](https://github.com/quack2025/genius-voice-dashboard)
 
+## Local Paths & Infrastructure
+
+| Resource | Location |
+|----------|----------|
+| This repo (backend) | `C:\Users\jorge\genius-voice-capture` |
+| Frontend repo | `C:\Users\jorge\genius-voice-dashboard` |
+| GitHub (backend) | `quack2025/genius-voice-capture` |
+| GitHub (frontend) | `quack2025/genius-voice-dashboard` |
+| Supabase project | `hggwsdqjkwydiubhvrvq` |
+| Deploy (backend) | Railway → `voice-capture-api-production.up.railway.app` |
+| Deploy (frontend) | Lovable (auto-deploy from `main`) |
+
 ## Quick Reference
 
 | Item | Value |

@@ -31,7 +31,7 @@ function getRequestOrigin(req) {
  * - Empty/missing allowedDomains → allow all (opt-in feature, backward compatible)
  * - Wildcard "*.example.com" matches "sub.example.com" and "example.com"
  * - Exact "example.com" matches only "example.com"
- * - localhost / 127.0.0.1 always allowed (development convenience)
+ * - localhost / 127.0.0.1 allowed only in non-production (NODE_ENV !== 'production')
  * - Missing origin with domain locking active → blocked (fail closed)
  */
 function isDomainAllowed(origin, allowedDomains) {
@@ -49,8 +49,10 @@ function isDomainAllowed(origin, allowedDomains) {
         hostname = origin; // bare hostname
     }
 
-    // Always allow localhost for development/testing
-    if (hostname === 'localhost' || hostname === '127.0.0.1') return true;
+    // Allow localhost only in non-production environments
+    if (process.env.NODE_ENV !== 'production') {
+        if (hostname === 'localhost' || hostname === '127.0.0.1') return true;
+    }
 
     for (const pattern of allowedDomains) {
         if (pattern.startsWith('*.')) {
