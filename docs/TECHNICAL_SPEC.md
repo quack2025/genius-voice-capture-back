@@ -273,7 +273,7 @@ CREATE POLICY "users_view_own_usage" ON usage FOR SELECT USING (auth.uid() = use
 
 ## API Endpoints
 
-**Base URL:** `https://voiceapi.survey-genius.ai`
+**Base URL:** `https://api.voicecapture.ai`
 
 ### 1. POST /api/upload
 
@@ -389,7 +389,7 @@ duration_seconds: 45
         "transcription_mode": "realtime",
         "created_at": "2026-01-21T10:00:00Z"
     },
-    "snippet": "<div id=\"genius-voice\" data-project=\"proj_ABC123XYZ\"></div>\n<script src=\"https://cdn.geniuslabs.ai/voice.js\"></script>"
+    "snippet": "<div id=\"genius-voice\" data-project=\"proj_ABC123XYZ\"></div>\n<script src=\"https://api.voicecapture.ai/voice.js\"></script>"
 }
 ```
 
@@ -926,8 +926,8 @@ CORS usa validación estática + dinámica (para dominios custom de plan Pro):
 ```javascript
 // config/index.js - origins estáticos
 allowedOrigins: [
-    'https://voice.geniuslabs.ai',           // Dashboard
-    'https://voiceapi.survey-genius.ai',     // API domain
+    'https://voicecapture.ai',           // Dashboard
+    'https://api.voicecapture.ai',     // API domain
     'http://localhost:3000',                  // Local dev
     'http://localhost:5173'                   // Vite dev
 ]

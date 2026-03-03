@@ -31,6 +31,9 @@ const config = {
 
     // CORS origins
     allowedOrigins: [
+        'https://voicecapture.ai',
+        'https://api.voicecapture.ai',
+        // Legacy domains (still active)
         'https://voice.geniuslabs.ai',
         'https://voiceapi.survey-genius.ai',
         'https://encuestas.genius-labs.com.co',
@@ -39,6 +42,7 @@ const config = {
     ],
 
     wildcardPatterns: [
+        /^https:\/\/.*\.voicecapture\.ai$/,
         /^https:\/\/.*\.lovable\.app$/,
         /^https:\/\/.*\.alchemer\.com$/,
         /^https:\/\/.*\.alchemer\.eu$/,

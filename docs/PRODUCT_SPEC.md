@@ -143,8 +143,8 @@ Permitir a los encuestados responder preguntas abiertas usando audio o texto, co
 | Storage (audio) | Supabase Storage | Integrado, signed URLs |
 | Transcripción | OpenAI Whisper API | $0.006/min, 57 idiomas, rápido |
 | Deploy | Railway (API) + Lovable (Dashboard) | Económico, escalable |
-| Dominio API | `voiceapi.survey-genius.ai` | Dominio profesional (Railway) |
-| Dominio Dashboard | `voice.geniuslabs.ai` | Lovable custom domain |
+| Dominio API | `api.voicecapture.ai` | Dominio profesional (Railway) |
+| Dominio Dashboard | `voicecapture.ai` | Lovable custom domain |
 
 ### Repositorios
 
@@ -300,7 +300,7 @@ Voice Capture ofrece dos modos para optimizar costos según las necesidades del 
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│  1. Usuario entra a voice.geniuslabs.ai                         │
+│  1. Usuario entra a voicecapture.ai                         │
 │     └─> Login con cuenta Genius Labs                            │
 └─────────────────────────────────────────────────────────────────┘
                             │
@@ -318,7 +318,7 @@ Voice Capture ofrece dos modos para optimizar costos según las necesidades del 
 │                                                                 │
 │  Paso 1: Custom HEAD (una sola vez por encuesta)                │
 │  ┌───────────────────────────────────────────────────────────┐  │
-│  │ <script src="https://voiceapi.survey-genius.ai/voice.js"> │  │
+│  │ <script src="https://api.voicecapture.ai/voice.js"> │  │
 │  │ </script>                                                 │  │
 │  └───────────────────────────────────────────────────────────┘  │
 │                                                                 │
@@ -457,7 +457,7 @@ Voice Capture ofrece dos modos para optimizar costos según las necesidades del 
 - **Config fetch**: Al iniciar, consulta `/api/widget-config/:projectKey` para obtener max_duration, branding y tema
 - **Branding badge**: Plan Free muestra "Powered by Survey Genius" al pie del widget
 - **Temas custom**: Plan Pro permite colores personalizados (`primary_color`, `background`, `border_radius`)
-- **API URL**: Apunta a `https://voiceapi.survey-genius.ai` por defecto
+- **API URL**: Apunta a `https://api.voicecapture.ai` por defecto
 
 ### UX Flow v1.8
 
@@ -497,7 +497,7 @@ Si el merge code no está disponible, el script puede extraer el session_id de l
 
 ## API Endpoints
 
-**Base URL:** `https://voiceapi.survey-genius.ai`
+**Base URL:** `https://api.voicecapture.ai`
 
 ### Autenticación
 - Endpoints del dashboard requieren JWT de Supabase Auth
@@ -1050,7 +1050,7 @@ CREATE POLICY batches_user_policy ON transcription_batches
 - POST /api/text-response: endpoint para respuestas escritas (sin Whisper)
 - Columna `input_method` en recordings (voice/text)
 - CORS dinamico para dominios custom (Pro+)
-- Dominio profesional: `voiceapi.survey-genius.ai`
+- Dominio profesional: `api.voicecapture.ai`
 - Pricing competitivo validado vs Voxpopme ($40K+/ano), Phonic ($36), Qualtrics ($420)
 
 ### Fase 1.8: UX Polish + Data Integrity (v1.8) -- COMPLETADO

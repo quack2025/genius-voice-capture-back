@@ -46,7 +46,7 @@ The widget is embedded via a JavaScript snippet. There are three setup steps:
 **STEP 1: Add script (once per survey)**
 In Alchemer: Style > HTML/CSS Editor > Custom HEAD
 \`\`\`html
-<script src="https://voiceapi.survey-genius.ai/voice.js"></script>
+<script src="https://api.voicecapture.ai/voice.js"></script>
 \`\`\`
 
 **STEP 2: Add container div (per question)**
@@ -76,7 +76,7 @@ NOTE: Replace 'proj_xxx' with the actual project key from the dashboard. The ses
 **STEP 1: Add script (once per survey)**
 In Qualtrics: Look & Feel > General > Header (click Edit)
 \`\`\`html
-<script src="https://voiceapi.survey-genius.ai/voice.js"></script>
+<script src="https://api.voicecapture.ai/voice.js"></script>
 \`\`\`
 
 **STEP 2: Add container div (per question)**
@@ -116,7 +116,7 @@ Add a question > choose "Custom HTML / Presentation Text"
      data-session="{{ResponseID}}"
      data-question="q1"
      data-lang="es"></div>
-<script src="https://voiceapi.survey-genius.ai/voice.js"></script>
+<script src="https://api.voicecapture.ai/voice.js"></script>
 \`\`\`
 NOTE: SurveyMonkey merge code for session ID is \`{{ResponseID}}\`. The Custom HTML question type includes both HTML and JavaScript.
 
@@ -125,7 +125,7 @@ NOTE: SurveyMonkey merge code for session ID is \`{{ResponseID}}\`. The Custom H
 **STEP 1: Add script globally**
 In QuestionPro: Survey Settings > Custom JavaScript/CSS > Header JavaScript:
 \`\`\`html
-<script src="https://voiceapi.survey-genius.ai/voice.js"></script>
+<script src="https://api.voicecapture.ai/voice.js"></script>
 \`\`\`
 
 **STEP 2: Add container div (per question)**
@@ -159,7 +159,7 @@ if (c) {
      data-session="{submission_id}"
      data-question="q1"
      data-lang="es"></div>
-<script src="https://voiceapi.survey-genius.ai/voice.js"></script>
+<script src="https://api.voicecapture.ai/voice.js"></script>
 \`\`\`
 NOTE: JotForm uses \`{submission_id}\` as the session merge code.
 
@@ -179,7 +179,7 @@ Embed the widget in any WordPress page/post using the HTML block:
      data-session="wp-visitor-ID"
      data-question="q1"
      data-lang="es"></div>
-<script src="https://voiceapi.survey-genius.ai/voice.js"></script>
+<script src="https://api.voicecapture.ai/voice.js"></script>
 \`\`\`
 NOTE: WordPress does not provide automatic session IDs. Generate a unique ID per visitor using JavaScript or a form plugin.
 
@@ -187,7 +187,7 @@ NOTE: WordPress does not provide automatic session IDs. Generate a unique ID per
 \`\`\`html
 <div id="genius-voice" data-project="proj_xxx" data-session="SESSION_ID"
      data-question="q1" data-lang="es"></div>
-<script src="https://voiceapi.survey-genius.ai/voice.js"></script>
+<script src="https://api.voicecapture.ai/voice.js"></script>
 \`\`\`
 
 ### Widget Customization

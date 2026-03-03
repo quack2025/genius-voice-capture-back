@@ -7,7 +7,7 @@
  *
  * STEP 1: Custom HEAD (once per survey)
  *   In Alchemer: Style > HTML/CSS Editor > Custom HEAD
- *   <script src="https://voiceapi.survey-genius.ai/voice.js"></script>
+ *   <script src="https://api.voicecapture.ai/voice.js"></script>
  *
  * STEP 2: Question Text (per question)
  *   In the question text (Source/HTML), add a container div:
@@ -30,7 +30,7 @@
  * === Generic HTML embed (non-Alchemer) ===
  *   <div id="genius-voice" data-project="proj_xxx" data-session="SESSION_ID"
  *        data-question="q1" data-lang="es"></div>
- *   <script src="https://voiceapi.survey-genius.ai/voice.js"></script>
+ *   <script src="https://api.voicecapture.ai/voice.js"></script>
  *
  *   IMPORTANT: For non-Alchemer platforms, you must EITHER set data-target
  *   to a CSS selector of the form field to write to, OR listen for the
@@ -110,7 +110,7 @@
         var questionId = container.dataset.question || null;
         var maxDuration = parseInt(container.dataset.maxDuration, 10) || 120;
         var lang = container.dataset.lang || 'es';
-        var apiUrl = container.dataset.api || getScriptOrigin() || 'https://voiceapi.survey-genius.ai';
+        var apiUrl = container.dataset.api || getScriptOrigin() || 'https://api.voicecapture.ai';
         var targetSelector = container.dataset.target || null;
 
         // --- i18n ---
@@ -344,8 +344,8 @@
         function renderBranding() {
             if (!showBranding) return;
             var badge = el('div', { className: 'gv-branding' });
-            var link = el('a', { href: 'https://survey-genius.ai', target: '_blank' });
-            link.textContent = 'Powered by Survey Genius';
+            var link = el('a', { href: 'https://voicecapture.ai', target: '_blank' });
+            link.textContent = 'Powered by Voice Capture';
             badge.appendChild(link);
             wrapper.appendChild(badge);
         }

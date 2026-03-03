@@ -195,7 +195,7 @@ router.post('/',
         }
 
         // Generate embed snippet
-        const snippet = `<div id="genius-voice" data-project="${publicKey}"></div>\n<script src="https://cdn.geniuslabs.ai/voice.js"></script>`;
+        const snippet = `<div id="genius-voice" data-project="${publicKey}"></div>\n<script src="https://api.voicecapture.ai/voice.js"></script>`;
 
         res.status(201).json({
             success: true,
